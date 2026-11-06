@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { APP_SECTIONS } from '@/apps/registry';
+import { NewBadge } from '@/components/handoff/built';
 import {
   Sidebar,
   SidebarContent,
@@ -53,6 +54,12 @@ export function AppSidebar() {
                   >
                     <app.icon />
                     <span>{app.label}</span>
+                    {app.badge ? (
+                      <NewBadge
+                        label={app.badge}
+                        className="ml-auto group-data-[collapsible=icon]:hidden"
+                      />
+                    ) : null}
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
