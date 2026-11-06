@@ -62,8 +62,8 @@ export default async function HomePage() {
               {
                 href: '/your-app',
                 icon: Sparkles,
-                label: 'Your app',
-                hint: 'An empty page to start from',
+                label: 'Closed Won hand-off',
+                hint: 'What I built, start here',
               },
               {
                 href: '/deals',
