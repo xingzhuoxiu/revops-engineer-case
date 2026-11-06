@@ -1,5 +1,9 @@
 import Link from 'next/link';
-import { askRepAction, checkAgain, replyAction } from '@/app/(shell)/handoff-actions';
+import {
+  askRepAction,
+  checkAgain,
+  replyAction,
+} from '@/app/(shell)/handoff-actions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatDate, formatDateTime } from '@/lib/format';
@@ -11,10 +15,14 @@ import { assignee, getPolicy } from '@/lib/policy/policy';
 const SNIPPET: Record<string, string> = {
   'Purchase order':
     'Can you get the PO from the customer? Billing cannot invoice until we have it.',
-  'Discount review': 'Is this discount approved? Please add the approval to the deal.',
   'Workspace match': 'Do you know which workspace the customer uses?',
   'Payment method on file':
     'The card on file has expired. Can you ask for a new card, or switch them to invoice?',
+};
+
+const KIND_SNIPPET: Partial<Record<Alert['kind'], string>> = {
+  overdue: 'This invoice is past due. Can you check in with the customer about payment?',
+  payment: 'The customer’s card payment failed. Can you ask them to update their card?',
 };
 
 export const exceptionCount = () => openAlerts().filter((a) => a.queue !== 'rep').length;
@@ -164,17 +172,19 @@ export async function Exceptions() {
 const COLUMNS = [
   { id: 'billing', label: 'Billing' },
   { id: 'credit', label: 'Credit Control' },
-  { id: 'manager', label: 'Finance or sales manager' },
+  { id: 'deal_desk', label: 'Deal Desk' },
 ] as const;
 
-/** Alerts with an owner label (discounts, commission) go to the manager column. */
+/** Alerts with an owner label are discount approvals. Deal Desk approves them, not Billing. */
 const columnOf = (a: Alert) =>
-  a.ownerLabel ? 'manager' : a.queue === 'credit' ? 'credit' : 'billing';
+  a.ownerLabel ? 'deal_desk' : a.queue === 'credit' ? 'credit' : 'billing';
 
 function Owner({ id }: { id: (typeof COLUMNS)[number]['id'] }) {
-  if (id === 'manager') {
+  if (id === 'deal_desk') {
     return (
-      <p className="text-muted-foreground text-xs">Affects commission, so not Billing’s call</p>
+      <p className="text-muted-foreground text-xs">
+        Approves discounts over {getPolicy().discountApprovalPct}%, in #deal-desk
+      </p>
     );
   }
   const who = assignee(getPolicy(), id);
@@ -189,7 +199,7 @@ function Owner({ id }: { id: (typeof COLUMNS)[number]['id'] }) {
 /** One small button. The message box opens only when it is clicked, so rows stay short. */
 function Action({ a, rep, customer }: { a: Alert; rep: string; customer: string }) {
   if (!a.oppId) return null;
-  if (a.kind === 'locked') return null;
+  if (a.kind === 'locked' || a.kind === 'reopened' || a.kind === 'account_changed') return null;
   if (a.kind === 'blocked') {
     return (
       <form action={checkAgain}>
@@ -198,6 +208,22 @@ function Action({ a, rep, customer }: { a: Alert; rep: string; customer: string 
           Try again
         </Button>
       </form>
+    );
+  }
+  // A discount is decided by Deal Desk, on the deal in Salesforce. The request in #deal-desk links there.
+  if (a.title === 'Discount approval') {
+    return (
+      <div className="flex flex-col gap-1">
+        <Link
+          href={`/deals/${a.oppId}`}
+          className="w-fit rounded-lg border px-2.5 py-1 text-sm hover:bg-muted"
+        >
+          Open the deal to approve
+        </Link>
+        <span className="text-muted-foreground text-xs">
+          Deal Desk approves or rejects on the deal in Salesforce. {rep} is told.
+        </span>
+      </div>
     );
   }
   const reply = a.kind === 'rep_message';
@@ -215,7 +241,11 @@ function Action({ a, rep, customer }: { a: Alert; rep: string; customer: string 
         <input type="hidden" name="oppId" value={a.oppId} />
         <Input
           name="text"
-          defaultValue={reply ? '' : (SNIPPET[a.title] ?? 'Can you check this on the deal?')}
+          defaultValue={
+            reply
+              ? ''
+              : (KIND_SNIPPET[a.kind] ?? SNIPPET[a.title] ?? 'Can you check this on the deal?')
+          }
           placeholder={reply ? 'Reply in #finance-billing' : undefined}
         />
         <Button type="submit" size="sm">

@@ -30,6 +30,18 @@ export interface Handoff {
   processedAt: string | null;
   /** Dates we have already sent the rep an urgent message, so we only send it once */
   urgentSentOn: string | null;
+  /** The deal's close date, to count how long it has waited */
+  closeDate?: string;
+  /** Salesforce account ID, to watch the customer's details after billing */
+  accountId?: string;
+  /** The customer's details as they were when we billed. A later difference raises an alert. */
+  accountSnapshot?: Record<string, unknown> | null;
+  /** The billing status fields we last wrote to the deal, so we only write when something changed */
+  written?: Record<string, string | null>;
+  /** Subscriptions this deal replaces. Their end date is when the customer needs the new billing secured. */
+  replaces?: { id: string; endDate: string }[];
+  /** Status messages already sent to the rep, so each change is told once */
+  notified?: string[];
 }
 
 export type AlertQueue = QueueId | 'rep';
@@ -41,13 +53,22 @@ export interface Alert {
   title: string;
   message: string;
   queue: AlertQueue;
-  /** Shown instead of the queue owner when the item is for "Finance or the sales manager" */
+  /** Shown instead of the queue owner when the item is for Deal Desk (a discount approval) */
   ownerLabel: string | null;
   due: string | null;
   status: 'open' | 'resolved';
   createdAt: string;
   /** What raised it: a rule, a blocked step, a locked change, a failed payment, a rep message ... */
-  kind: 'rule' | 'blocked' | 'locked' | 'payment' | 'unsecured' | 'rep_message';
+  kind:
+    | 'rule'
+    | 'blocked'
+    | 'locked'
+    | 'payment'
+    | 'unsecured'
+    | 'rep_message'
+    | 'overdue'
+    | 'reopened'
+    | 'account_changed';
 }
 
 interface AppState {
@@ -57,9 +78,28 @@ interface AppState {
   demoDays: number;
   /** Rep (Salesforce user ID) -> the last digest we sent, so we never send the same one twice in a day */
   digests: Record<string, { on: string; text: string }>;
+  /** Slack messages our app has already replied to or nudged, so each is handled once */
+  channelDone?: string[];
+  /** The last day the sales manager's weekly update went out */
+  managerUpdateOn?: string | null;
 }
 
-const empty = (): AppState => ({ handoffs: {}, alerts: [], demoDays: 0, digests: {} });
+const empty = (): AppState => ({
+  handoffs: {},
+  alerts: [],
+  demoDays: 0,
+  digests: {},
+  channelDone: [],
+});
+
+/** True the first time a Slack message key is used. */
+export const markChannelDone = (key: string) =>
+  changeState((s) => {
+    const done = s.channelDone ?? [];
+    if (done.includes(key)) return false;
+    s.channelDone = [...done, key];
+    return true;
+  });
 
 export function readState(): AppState {
   return { ...empty(), ...((readDb().app.closedWon as Partial<AppState> | undefined) ?? {}) };
@@ -84,6 +124,24 @@ export const getHandoff = (oppId: string) => readState().handoffs[oppId] ?? null
 export const saveHandoff = (h: Handoff) =>
   changeState((s) => {
     s.handoffs[h.oppId] = h;
+  });
+
+/** True the first time a message key is used for a deal. Used so a status change reaches the rep once. */
+export const markNotified = (oppId: string, key: string) =>
+  changeState((s) => {
+    const h = s.handoffs[oppId];
+    if (!h) return false;
+    const done = h.notified ?? [];
+    if (done.includes(key)) return false;
+    s.handoffs[oppId] = { ...h, notified: [...done, key] };
+    return true;
+  });
+
+/** Changes a few fields on a record without replacing the rest. */
+export const patchHandoff = (oppId: string, patch: Partial<Handoff>) =>
+  changeState((s) => {
+    const h = s.handoffs[oppId];
+    if (h) s.handoffs[oppId] = { ...h, ...patch };
   });
 
 /**

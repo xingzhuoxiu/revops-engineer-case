@@ -5,6 +5,8 @@ import { demoFix } from '@/lib/handoff/demo';
 import {
   advanceDays,
   askRep,
+  decideApproval,
+  requestApproval,
   financeReply,
   moveToClosedWon,
   recheck,
@@ -79,8 +81,24 @@ export async function askRepAction(f: FormData) {
   refresh();
 }
 
+export async function requestApprovalAction(f: FormData) {
+  await requestApproval(text(f, 'oppId'));
+  refresh();
+}
+
+export async function decideApprovalAction(f: FormData) {
+  const decision = text(f, 'decision') === 'Rejected' ? 'Rejected' : 'Approved';
+  await decideApproval(text(f, 'oppId'), decision);
+  refresh();
+}
+
 export async function replyAction(f: FormData) {
-  if (text(f, 'text')) await financeReply(text(f, 'oppId'), text(f, 'text'));
+  // Reply where the rep asked: the same channel and thread. Without one, #finance-billing.
+  const channel = text(f, 'channel');
+  const target = channel ? { channel, threadTs: text(f, 'threadTs') || undefined } : undefined;
+  if (text(f, 'text')) {
+    await financeReply(text(f, 'oppId'), text(f, 'text'), undefined, target);
+  }
   refresh();
 }
 
@@ -91,6 +109,8 @@ export async function savePolicyAction(f: FormData) {
     cardLimitEur: number(f, 'cardLimitEur', current.cardLimitEur),
     discountApprovalPct: number(f, 'discountApprovalPct', current.discountApprovalPct),
     repDeadlineDays: number(f, 'repDeadlineDays', current.repDeadlineDays),
+    managerEscalationDays: number(f, 'managerEscalationDays', current.managerEscalationDays),
+    salesManager: text(f, 'salesManager') || current.salesManager,
     financeDeadlineDaysBeforeStart: number(
       f,
       'financeDeadlineDaysBeforeStart',

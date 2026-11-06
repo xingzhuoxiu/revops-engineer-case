@@ -19,10 +19,14 @@ export interface Queue {
 export interface Policy {
   /** R2: card is allowed up to this first-year amount, in EUR */
   cardLimitEur: number;
-  /** Above this discount, Finance or the sales manager reviews the deal */
+  /** Above this discount, Deal Desk has to approve the deal before it is booked */
   discountApprovalPct: number;
   /** A rep has this many days after Closed Won to fix their part */
   repDeadlineDays: number;
+  /** A deal still waiting on its rep this many days after close goes into the sales manager's weekly update */
+  managerEscalationDays: number;
+  /** Who gets the weekly update. There is no sales manager in the case, so this is a setting. */
+  salesManager: string;
   /** Finance items are due this many days before the start date */
   financeDeadlineDaysBeforeStart: number;
   /** Warn when billing is still not secured this many days before the start date */
@@ -44,6 +48,9 @@ export const DEFAULT_POLICY: Policy = {
   cardLimitEur: 10000,
   discountApprovalPct: 25,
   repDeadlineDays: 2,
+  managerEscalationDays: 5,
+  // Placeholder: the case has no sales manager, and Kim is the only manager role. Set the real one.
+  salesManager: 'Kim Andersson',
   financeDeadlineDaysBeforeStart: 3,
   escalateDaysBeforeStart: 3,
   poExceptionForExistingCustomers: false,
@@ -124,8 +131,10 @@ export function getPolicyLog(): PolicyChange[] {
 
 const LABELS: Partial<Record<keyof Policy, string>> = {
   cardLimitEur: 'Card limit (EUR)',
-  discountApprovalPct: 'Discount needing review (%)',
+  discountApprovalPct: 'Discount needing Deal Desk approval (%)',
   repDeadlineDays: 'Rep deadline (days after close)',
+  managerEscalationDays: 'Sales manager update after (days since close)',
+  salesManager: 'Sales manager',
   financeDeadlineDaysBeforeStart: 'Finance deadline (days before start)',
   escalateDaysBeforeStart: 'Escalate unsecured billing (days before start)',
   poExceptionForExistingCustomers: 'PO exception for existing customers',

@@ -1,6 +1,12 @@
 import { Check, X } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { checkAgain, closeDeal, pretendFixed } from '@/app/(shell)/handoff-actions';
+import {
+  checkAgain,
+  closeDeal,
+  decideApprovalAction,
+  pretendFixed,
+  requestApprovalAction,
+} from '@/app/(shell)/handoff-actions';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -21,12 +27,13 @@ const CHECKS: [label: string, rules: string[]][] = [
   ['VAT ID valid', ['VAT']],
   ['Purchase order present', ['R3']],
   ['Start date valid', ['Dates']],
+  ['Discount approved', ['Discount']],
 ];
 
 const WAITING_ON: Record<string, string> = {
   billing: 'Billing',
   credit: 'Credit Control',
-  finance_or_manager: 'Finance or sales manager (affects commission)',
+  deal_desk: 'Deal Desk (approves discounts over 25%)',
 };
 
 /**
@@ -50,12 +57,39 @@ export async function RepChecklist({ oppId }: { oppId: string }) {
 
   // What happened in billing, read live: the invoice may have been sent since
   let billing: string | null = null;
+  // Where the deal is in finance's process, shown to the rep as a short strip
+  let steps: { label: string; done: boolean; note?: string }[] | null = null;
   if (h?.status === 'processed') {
     if (h.invoiceNumber) {
       const invoice = await kleer.getInvoice(h.invoiceNumber);
+      const sent = invoice.status !== 'draft';
+      steps = [
+        { label: 'Checked', done: true },
+        { label: 'Invoice drafted', done: true, note: invoice.invoiceNumber },
+        {
+          label: sent ? 'Invoice sent to customer' : 'Invoice with finance to send',
+          done: sent,
+          note: sent && invoice.sentAt ? formatDate(invoice.sentAt) : undefined,
+        },
+        ...(sent
+          ? [
+              invoice.status === 'paid'
+                ? { label: 'Paid', done: true, note: formatDate(invoice.paidAt) }
+                : {
+                    label: invoice.dueDate < appToday() ? 'Payment overdue' : 'Waiting for payment',
+                    done: false,
+                    note: `due ${formatDate(invoice.dueDate)}`,
+                  },
+            ]
+          : []),
+      ];
       billing = `Invoice ${invoice.invoiceNumber}, ${invoice.status === 'draft' ? 'with Billing for review' : invoice.status}`;
     } else if (h.stripeSubscriptionId) {
       billing = 'Card charged';
+      steps = [
+        { label: 'Checked', done: true },
+        { label: 'Card charged', done: true },
+      ];
     }
   }
 
@@ -116,6 +150,27 @@ export async function RepChecklist({ oppId }: { oppId: string }) {
           <Badge className={status.tone}>{status.label}</Badge>
         </div>
 
+        {steps ? (
+          <ol className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+            {steps.map((s, i) => (
+              <li key={s.label} className="flex items-center gap-2">
+                {i > 0 ? <span className="text-muted-foreground">→</span> : null}
+                <span
+                  className={
+                    s.done
+                      ? 'flex items-center gap-1 font-medium text-emerald-700 dark:text-emerald-400'
+                      : 'flex items-center gap-1 text-amber-700 dark:text-amber-400'
+                  }
+                >
+                  {s.done ? <Check className="size-4" /> : <span className="size-2 rounded-full bg-amber-500" />}
+                  {s.label}
+                  {s.note ? <span className="font-normal text-muted-foreground">{s.note}</span> : null}
+                </span>
+              </li>
+            ))}
+          </ol>
+        ) : null}
+
         <Rest>
           {!closed ? (
             <div className="flex flex-col gap-3 text-sm">
@@ -154,7 +209,8 @@ export async function RepChecklist({ oppId }: { oppId: string }) {
               {CHECKS.filter(
                 ([label]) =>
                   (label !== 'VAT ID valid' || account.VAT_Number__c) &&
-                  (label !== 'Purchase order present' || account.PO_Required__c),
+                  (label !== 'Purchase order present' || account.PO_Required__c) &&
+                (label !== 'Discount approved' || (opp.Discount__c ?? 0) > policy.discountApprovalPct),
               ).map(([label, rules]) => {
                 const bad = repFails.filter((f) => rules.includes(f.rule));
                 if (bad.length === 0) {
@@ -214,7 +270,9 @@ export async function RepChecklist({ oppId }: { oppId: string }) {
             <p className="text-sm">
               {result.due < appToday() ? 'This was due ' : 'Please fix this by '}
               <strong>{formatDate(result.due)}</strong>. You get one Slack message a day while
-              something is open.
+              something is open. The deal counts in the forecast, but finance cannot book it until
+              this is fixed. If it is still open {policy.managerEscalationDays} days after close,{' '}
+              {policy.salesManager} sees it in the weekly update.
             </p>
           ) : null}
 
@@ -225,7 +283,7 @@ export async function RepChecklist({ oppId }: { oppId: string }) {
                 {others.map((f) => (
                   <li key={f.rule}>
                     {f.rule === 'Discount'
-                      ? 'Discount review'
+                      ? 'Discount approval'
                       : f.rule === 'R3'
                         ? 'Purchase order'
                         : f.rule === 'Workspace'
@@ -237,6 +295,57 @@ export async function RepChecklist({ oppId }: { oppId: string }) {
                   </li>
                 ))}
               </ul>
+            </div>
+          ) : null}
+
+          {closed && !done && fails.some((f) => f.rule === 'Discount') ? (
+            <div className="rounded-lg border p-3 text-sm">
+              {opp.Discount_Approval__c === 'Pending' ? (
+                <div className="flex flex-col gap-2">
+                  <p>
+                    <strong>Approval requested</strong> in #deal-desk, with a link to this deal.
+                    You get a Slack message when Deal Desk decides.
+                  </p>
+                  <form action={decideApprovalAction} className="flex flex-col items-start gap-1">
+                    <input type="hidden" name="oppId" value={oppId} />
+                    <div className="flex gap-2">
+                      <Button
+                        type="submit"
+                        name="decision"
+                        value="Approved"
+                        size="sm"
+                        className="bg-violet-600 text-white hover:bg-violet-700"
+                      >
+                        Demo: Deal Desk approves
+                      </Button>
+                      <Button
+                        type="submit"
+                        name="decision"
+                        value="Rejected"
+                        variant="outline"
+                        size="sm"
+                      >
+                        Demo: Deal Desk rejects
+                      </Button>
+                    </div>
+                    <span className="text-muted-foreground text-xs">
+                      Deal Desk follows the link in #deal-desk and decides here. In Salesforce
+                      this is the approval step on the record.
+                    </span>
+                  </form>
+                </div>
+              ) : (
+                <form action={requestApprovalAction} className="flex flex-col items-start gap-1">
+                  <input type="hidden" name="oppId" value={oppId} />
+                  <Button type="submit" size="sm">
+                    Request Deal Desk approval
+                  </Button>
+                  <span className="text-muted-foreground text-xs">
+                    Sends the request to #deal-desk with this deal attached. Nothing to type or
+                    copy.
+                  </span>
+                </form>
+              )}
             </div>
           ) : null}
 

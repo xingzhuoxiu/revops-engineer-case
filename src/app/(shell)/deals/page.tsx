@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { DealsTable, HANDOFF_LABEL } from '@/components/data/deals-table';
+import { DealsTable, HANDOFF_LABEL, HandoffLegend } from '@/components/data/deals-table';
 import { TabsNav } from '@/components/data/tabs-nav';
 import { BuiltNote } from '@/components/handoff/built';
 import { Page, PageHeader } from '@/components/shell/page';
@@ -32,18 +32,30 @@ export default async function DealsPage(props: PageProps<'/deals'>) {
   const open = opportunities.filter((o) => !o.IsClosed && o.StageName !== 'Closed Won');
   const inView = active === 'won' ? won : active === 'open' ? open : opportunities;
   const statusOf = (id: string) => handoffs[id]?.status ?? 'not_sent';
+  const search = text(params.q)?.trim() ?? '';
+  const needle = search.toLowerCase();
+  const accountName = (id: string) => accounts.find((a) => a.Id === id)?.Name ?? '';
   const shown = inView
-    .filter((o) => (!rep || o.OwnerId === rep) && (!handoff || statusOf(o.Id) === handoff))
+    .filter(
+      (o) =>
+        (!rep || o.OwnerId === rep) &&
+        (!handoff || statusOf(o.Id) === handoff) &&
+        (!needle ||
+          o.Name.toLowerCase().includes(needle) ||
+          accountName(o.AccountId).toLowerCase().includes(needle)),
+    )
     .sort((a, b) => b.CloseDate.localeCompare(a.CloseDate));
 
-  // Filters keep each other and the selected tab
-  const href = (next: { rep?: string; handoff?: string }) => {
+  // Filters keep each other, the search and the selected tab
+  const href = (next: { rep?: string; handoff?: string; q?: string }) => {
     const q = new URLSearchParams();
     if (view) q.set('view', view);
     const r = 'rep' in next ? next.rep : rep;
     const h = 'handoff' in next ? next.handoff : handoff;
     if (r) q.set('rep', r);
     if (h) q.set('handoff', h);
+    const s = 'q' in next ? next.q : search;
+    if (s) q.set('q', s);
     return `/deals${q.size ? `?${q}` : ''}`;
   };
   const owners = [...new Set(inView.map((o) => o.OwnerId))]
@@ -52,7 +64,18 @@ export default async function DealsPage(props: PageProps<'/deals'>) {
 
   return (
     <Page>
-      <PageHeader title="Deals" description="Opportunities in Salesforce." />
+      <PageHeader
+        eyebrow={
+          <span className="flex items-center gap-2">
+            <span className="flex size-6 items-center justify-center rounded bg-[#fcb95b] font-bold text-[10px] text-white">
+              $
+            </span>
+            Opportunities
+          </span>
+        }
+        title="Recently viewed"
+        description="Opportunities in Salesforce."
+      />
       <TabsNav
         active={active}
         tabs={[
@@ -61,6 +84,29 @@ export default async function DealsPage(props: PageProps<'/deals'>) {
           { id: 'all', label: 'All', href: '/deals?view=all', count: opportunities.length },
         ]}
       />
+      <form action="/deals" className="flex items-center gap-2">
+        {view ? <input type="hidden" name="view" value={view} /> : null}
+        {rep ? <input type="hidden" name="rep" value={rep} /> : null}
+        {handoff ? <input type="hidden" name="handoff" value={handoff} /> : null}
+        <input
+          type="search"
+          name="q"
+          defaultValue={search}
+          placeholder="Search deals by name"
+          className="h-9 w-full max-w-sm rounded-md border bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-ring/40"
+        />
+        <button
+          type="submit"
+          className="h-9 rounded-md bg-primary px-3 font-medium text-primary-foreground text-sm"
+        >
+          Search
+        </button>
+        {search ? (
+          <Link href={href({ q: undefined })} className="text-muted-foreground text-sm hover:underline">
+            Clear
+          </Link>
+        ) : null}
+      </form>
       <div className="flex flex-col gap-3 rounded-lg border border-violet-500/30 bg-violet-500/5 p-3">
         <BuiltNote title="What I added here.">
           The Hand-off column, and the filters by owner and status. Real Salesforce already lets you
@@ -89,6 +135,7 @@ export default async function DealsPage(props: PageProps<'/deals'>) {
           ))}
         </Filter>
       </div>
+      <HandoffLegend />
       <DealsTable opportunities={shown} accounts={accounts} users={users} />
     </Page>
   );

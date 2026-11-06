@@ -1,3 +1,4 @@
+import { MessageSquare } from 'lucide-react';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import {
@@ -47,6 +48,8 @@ interface Row {
   h: Handoff;
   kind: Kind;
   note: string;
+  /** The latest message a person wrote about this deal in Slack, if any */
+  msg?: { author: string; at: string; unanswered: boolean } | null;
 }
 
 const DOT: Record<Kind, string> = {
@@ -58,6 +61,7 @@ const DOT: Record<Kind, string> = {
 
 const FILTERS: { id: string; label: string; kinds: Kind[] | null }[] = [
   { id: 'all', label: 'All', kinds: null },
+  { id: 'messages', label: 'Rep messages', kinds: null },
   { id: 'to_send', label: 'To send', kinds: ['to_send'] },
   { id: 'waiting', label: 'Waiting', kinds: ['waiting'] },
   { id: 'done', label: 'Done', kinds: ['done'] },
@@ -103,12 +107,29 @@ export async function ReadyToBill({
   }
   // One call for every invoice, instead of one per deal
   const invoices = new Map((await kleer.findInvoices()).map((i) => [i.invoiceNumber, i.status]));
-  const rows = all.map((h) => toRow(h, invoices));
+  // Recent Slack messages from reps, so finance sees them here without opening each deal
+  const threads = await messagesByDeal(
+    all.map((h) => ({ Id: h.oppId, accountName: h.accountName })),
+  );
+  const rows = all.map((h) => {
+    const row = toRow(h, invoices);
+    const thread = threads[h.oppId];
+    const latest = thread?.messages.find((m) => m.role !== 'app');
+    row.msg =
+      latest && thread
+        ? { author: latest.author, at: latest.at, unanswered: thread.unanswered }
+        : null;
+    return row;
+  });
   const active = FILTERS.find((f) => f.id === filter) ?? FILTERS[0];
-  const shown = rows.filter((r) => !active?.kinds || active.kinds.includes(r.kind));
+  const matches = (r: Row, id: string, kinds: Kind[] | null) =>
+    id === 'messages' ? !!r.msg?.unanswered : !kinds || kinds.includes(r.kind);
+  // Deals with a message nobody has answered come first
+  const shown = rows
+    .filter((r) => matches(r, active?.id ?? 'all', active?.kinds ?? null))
+    .sort((a, b) => Number(!!b.msg?.unanswered) - Number(!!a.msg?.unanswered));
   const selected = shown.find((r) => r.h.oppId === deal) ?? shown[0];
-  const count = (kinds: Kind[] | null) =>
-    rows.filter((r) => !kinds || kinds.includes(r.kind)).length;
+  const count = (f: (typeof FILTERS)[number]) => rows.filter((r) => matches(r, f.id, f.kinds)).length;
   const href = (oppId: string, f = active?.id) =>
     `/admin-app?tab=ready&deal=${oppId}${f && f !== 'all' ? `&filter=${f}` : ''}`;
 
@@ -127,7 +148,7 @@ export async function ReadyToBill({
                   : 'hover:bg-violet-500/10',
               )}
             >
-              {f.label} {count(f.kinds)}
+              {f.label} {count(f)}
             </Link>
           ))}
         </nav>
@@ -147,6 +168,21 @@ export async function ReadyToBill({
                   <span className="block truncate text-muted-foreground text-xs">
                     {r.note}, {r.h.repName}
                   </span>
+                  {r.msg ? (
+                    <span
+                      className={cn(
+                        'mt-1 flex items-center gap-1 truncate text-xs',
+                        r.msg.unanswered
+                          ? 'font-medium text-amber-700 dark:text-amber-400'
+                          : 'text-muted-foreground',
+                      )}
+                    >
+                      <MessageSquare className="size-3 shrink-0" />
+                      {r.msg.unanswered
+                        ? `${r.msg.author} wrote in Slack, no reply (${formatDate(r.msg.at)})`
+                        : `${r.msg.author} wrote in Slack, ${formatDate(r.msg.at)}`}
+                    </span>
+                  ) : null}
                 </span>
               </Link>
             </li>
@@ -187,6 +223,10 @@ async function Detail({
     messagesByDeal([{ Id: h.oppId, accountName: h.accountName }]).then((t) => t[h.oppId]),
   ]);
   const today = appToday();
+  // Where the rep last asked, so the reply goes there and not to another channel
+  const asked = thread?.messages.find(
+    (m) => m.role === 'rep' && m.channel.startsWith('#') && !m.threadTs,
+  );
   const live =
     sub && sub.status === 'Scheduled'
       ? `Scheduled, goes live ${formatDate(sub.startDate)}`
@@ -381,22 +421,30 @@ async function Detail({
           <Messages thread={thread} />
           <form className="flex flex-col gap-2">
             <input type="hidden" name="oppId" value={h.oppId} />
+            {asked ? (
+              <>
+                <input type="hidden" name="channel" value={asked.channel.replace('#', '')} />
+                <input type="hidden" name="threadTs" value={asked.ts} />
+              </>
+            ) : null}
             <Textarea
               name="text"
               rows={2}
-              placeholder={`Write to ${h.repName} or to #finance-billing`}
+              placeholder={`Write to ${h.repName} or reply in ${asked?.channel ?? '#finance-billing'}`}
             />
             <div className="flex flex-wrap gap-2">
               <Button type="submit" size="sm" formAction={askRepAction}>
                 Send to {h.repName.split(' ')[0]} in Slack
               </Button>
               <Button type="submit" size="sm" variant="outline" formAction={replyAction}>
-                Post in #finance-billing
+                {asked ? `Reply in ${asked.channel}` : 'Post in #finance-billing'}
               </Button>
             </div>
             <p className="text-muted-foreground text-xs">
-              Both are filed under this deal. The first is a direct message to the rep. The second
-              is a reply in the channel, and closes an open message from the rep.
+              Both are filed under this deal. The first is a direct message to the rep.{' '}
+              {asked
+                ? `The second replies in the thread of ${asked.author}'s message in ${asked.channel}, where they asked, and tags ${h.repName.split(' ')[0]}.`
+                : `The second is a post in the channel that tags ${h.repName.split(' ')[0]}.`}
             </p>
           </form>
         </div>
@@ -421,16 +469,23 @@ function Demo() {
   return (
     <details className="rounded-lg border p-3 text-sm">
       <summary className="cursor-pointer text-muted-foreground">Demo controls</summary>
-      <form action={advanceAction} className="mt-3 flex flex-col items-start gap-2">
-        <input type="hidden" name="days" value="7" />
-        <Button type="submit" variant="outline" size="sm">
-          Demo: +7 days
-        </Button>
+      <div className="mt-3 flex flex-col items-start gap-2">
+        <div className="flex gap-2">
+          {[7, 35].map((days) => (
+            <form key={days} action={advanceAction}>
+              <input type="hidden" name="days" value={days} />
+              <Button type="submit" variant="outline" size="sm">
+                Demo: +{days} days
+              </Button>
+            </form>
+          ))}
+        </div>
         <span className="text-muted-foreground text-xs">
           Moves the app’s clock forward and runs the daily check, to see deadlines, going live and
-          escalation. Reset everything on Dev tools.
+          escalation. +35 days passes the 30-day payment terms, so sent invoices become overdue.
+          Reset everything on Dev tools.
         </span>
-      </form>
+      </div>
     </details>
   );
 }

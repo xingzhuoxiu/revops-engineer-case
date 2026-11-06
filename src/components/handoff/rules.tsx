@@ -15,10 +15,15 @@ const NUMBERS: [name: string, label: string, hint: string][] = [
   ],
   [
     'discountApprovalPct',
-    'Discount that needs review (%)',
-    'Above this, Finance or the sales manager reviews it. It affects commission.',
+    'Discount that needs Deal Desk approval (%)',
+    'Above this, Deal Desk has to approve it before the deal is booked.',
   ],
   ['repDeadlineDays', 'Rep deadline (days after close)', 'How long a rep has to fix their part.'],
+  [
+    'managerEscalationDays',
+    'Sales manager update after (days since close)',
+    'A deal still waiting on its rep after this long is in the sales manager’s weekly update.',
+  ],
   [
     'financeDeadlineDaysBeforeStart',
     'Finance deadline (days before start)',
@@ -52,6 +57,15 @@ export function Rules() {
               <span className="text-muted-foreground text-xs">{hint}</span>
             </div>
           ))}
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="salesManager">Sales manager (weekly update)</Label>
+            <Input id="salesManager" name="salesManager" defaultValue={policy.salesManager} />
+            <span className="text-muted-foreground text-xs">
+              Gets one Slack message a week: closed deals not booked because the rep hasn’t fixed
+              something, by rep, with the value. The case has no sales manager, so this is a
+              placeholder. Use a name from Salesforce.
+            </span>
+          </div>
           <div className="flex flex-col gap-1">
             <Label htmlFor="invoiceSendMode">Invoice sending</Label>
             <select

@@ -13,7 +13,7 @@ import type {
 import type { Policy } from './policy';
 
 /** Who has to act on a finding. Rep fixes it, a queue works it. */
-export type Owner = 'rep' | 'billing' | 'credit' | 'finance_or_manager';
+export type Owner = 'rep' | 'billing' | 'credit' | 'deal_desk';
 
 export interface Finding {
   rule: string;
@@ -157,6 +157,11 @@ export const FIX: Record<string, { what: string; how: string; where: string }> =
     how: 'Check the VAT ID with the customer. EU IDs start with the country code, then digits.',
     where: 'Account > VAT Number',
   },
+  Discount: {
+    what: 'Discount was not approved',
+    how: 'Change the discount to 25% or less, or change it and request Deal Desk approval again.',
+    where: 'Opportunity > Discount',
+  },
   Dates: {
     what: 'Start date is before the close date',
     how: 'Set a start date on or after the close date, or ask finance to approve backdating.',
@@ -255,14 +260,18 @@ export function evaluateDeal(ctx: DealContext, policy: Policy): Evaluation {
     );
   }
 
-  // Discount: Finance or the sales manager reviews, because it affects commission
+  // Discount: above the threshold, Deal Desk has to approve it before the deal is booked
   const discount = opp.Discount__c ?? 0;
   if (discount > policy.discountApprovalPct && opp.Discount_Approval__c !== 'Approved') {
+    // Rejected goes back to the rep, who has to change the discount. Anything else waits for Deal Desk.
+    const rejected = opp.Discount_Approval__c === 'Rejected';
     add(
       'Discount',
       'fail',
-      'finance_or_manager',
-      `Discount is ${discount}% and approval is ${opp.Discount_Approval__c ?? 'missing'}. Needs review before booking.`,
+      rejected ? 'rep' : 'deal_desk',
+      rejected
+        ? `Deal Desk did not approve the ${discount}% discount. Change the discount and request approval again.`
+        : `Discount is ${discount}% and Deal Desk approval is ${opp.Discount_Approval__c ?? 'missing'}. Deal Desk must approve it before the deal is booked.`,
     );
   } else {
     add('Discount', 'pass', null, `Discount ${discount}%.`);
@@ -287,6 +296,15 @@ export function evaluateDeal(ctx: DealContext, policy: Policy): Evaluation {
     }
   } else {
     add('R3', 'pass', null, account.PO_Required__c ? 'PO present.' : 'No PO required.');
+  }
+
+  // Stripe also needs a billing email for the customer (billing-policy.md, "What each system needs")
+  if (method === 'Card') {
+    if (!account.Invoice_Email__c) {
+      add('R4', 'fail', 'rep', 'Missing for card billing: billing email.');
+    } else {
+      add('R4', 'pass', null, 'Billing email present.');
+    }
   }
 
   // R4: what an invoice needs

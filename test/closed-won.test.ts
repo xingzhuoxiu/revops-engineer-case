@@ -10,11 +10,13 @@ import { loadContext } from '@/lib/handoff/context';
 import { demoFix } from '@/lib/handoff/demo';
 import {
   advanceDays,
+  decideApproval,
   financeReply,
   handleEvent,
   moveToClosedWon,
   recheck,
   repMessageFinance,
+  requestApproval,
   saveBillingDetails,
   sendInvoice,
   sweep,
@@ -161,10 +163,10 @@ describe('things only people can decide', () => {
     ).toBe(true);
   });
 
-  it('sends a discount over 25% to Finance or the sales manager', async () => {
+  it('sends a discount over 25% to Deal Desk, as the policy says', async () => {
     await sendAll();
-    const lumen = openAlerts().find((a) => a.title === 'Discount review');
-    expect(lumen?.ownerLabel).toContain('sales manager');
+    const lumen = openAlerts().find((a) => a.title === 'Discount approval');
+    expect(lumen?.ownerLabel).toContain('Deal Desk');
   });
 
   it('puts the expired card in Credit Control’s queue', async () => {
@@ -411,6 +413,217 @@ describe('the PO is the rep’s to fill in', () => {
     });
     expect(outcome).toBe('processed');
     expect(openAlerts().some((a) => a.oppId === orbital)).toBe(false);
+  });
+});
+
+describe('after billing: the other systems report back', () => {
+  it('writes the invoice and subscription status onto the deal', async () => {
+    await sendAll();
+    const fjordline = await idOf('Fjordline');
+    const draft = await salesforce.getOpportunity(fjordline);
+    expect(draft.Invoice_Status__c).toBe('Draft');
+    expect(draft.Subscription_Status__c).toBe('Scheduled');
+    await sendInvoice(fjordline);
+    const sent = await salesforce.getOpportunity(fjordline);
+    expect(sent.Invoice_Status__c).toBe('Sent');
+    expect(sent.Invoice_Sent_Date__c).toBeTruthy();
+    expect(sent.Invoice_Due_Date__c).toBeTruthy();
+  });
+
+  it('sends an unpaid invoice past its due date to Credit Control and tells the rep once', async () => {
+    await sendAll();
+    const fjordline = await idOf('Fjordline');
+    await sendInvoice(fjordline);
+    await advanceDays(35);
+    const overdue = openAlerts('credit').filter((a) => a.kind === 'overdue' && a.oppId === fjordline);
+    expect(overdue).toHaveLength(1);
+    expect((await salesforce.getOpportunity(fjordline)).Invoice_Status__c).toBe('Overdue');
+    const told = () => readDb().slack.messages.filter((m) => m.text.includes('and is not paid')).length;
+    const before = told();
+    await sweep();
+    expect(told()).toBe(before); // a second sweep does not message again
+  });
+
+  it('links a failed card payment to the rep who owns the customer', async () => {
+    await sendAll();
+    await sweep();
+    const sable = openAlerts('credit').find((a) => a.title.startsWith('Payment failed: Sable'));
+    expect(sable?.message).toContain('owns the customer');
+  });
+
+  it('raises a deal that is moved out of Closed Won after billing, and changes nothing', async () => {
+    await sendAll();
+    const fjordline = await idOf('Fjordline');
+    const { events } = await salesforce.listEvents();
+    const event = events.find((e) => e.opportunityId === fjordline);
+    if (!event) throw new Error('no event');
+    const before = await kleer.findInvoices({ foreignId: fjordline });
+    expect(await handleEvent({ ...event, type: 'opportunity.reopened', changedFields: ['StageName'] })).toBe(
+      'locked',
+    );
+    expect(openAlerts('billing').some((a) => a.kind === 'reopened' && a.oppId === fjordline)).toBe(true);
+    expect(await kleer.findInvoices({ foreignId: fjordline })).toEqual(before);
+  });
+
+  it('raises a change to the customer’s details after billing', async () => {
+    await sendAll();
+    const fjordline = await idOf('Fjordline');
+    const { AccountId } = await salesforce.getOpportunity(fjordline);
+    await salesforce.updateAccount(AccountId, { Invoice_Email__c: 'someone.else@example.com' });
+    await sweep();
+    expect(openAlerts('billing').some((a) => a.kind === 'account_changed' && a.oppId === fjordline)).toBe(
+      true,
+    );
+  });
+});
+
+describe('the rep hears about every status change, once', () => {
+  const said = (text: string) => readDb().slack.messages.filter((m) => m.text.includes(text)).length;
+
+  it('tells the rep when a deal is processed and when it goes to finance', async () => {
+    await sendAll();
+    expect(said('Fjordline') > 0).toBe(true);
+    expect(said('is processed: the invoice is drafted') > 0).toBe(true);
+    expect(said('is with finance. They are waiting on: discount approval')).toBe(1);
+  });
+
+  it('tells the rep when the old plan ends, if the deal replaces one (Nordlys)', async () => {
+    await sendAll();
+    expect(said('ends on 2026-11-14') > 0).toBe(true);
+    expect(getHandoff(await idOf('Nordlys'))?.replaces?.[0]?.id).toBe('SUB-501');
+  });
+
+  it('does not repeat itself when the same events come again', async () => {
+    await sendAll();
+    await sweep();
+    const before = readDb().slack.messages.length;
+    await sendAll();
+    await sweep();
+    expect(readDb().slack.messages.length).toBe(before);
+  });
+});
+
+describe('requests typed in the Slack channels', () => {
+  const threadReplies = (text: string) =>
+    readDb().slack.messages.filter((m) => m.threadTs && m.text.includes(text));
+
+  it('answers a rep’s question in the thread with the deal’s live status, once', async () => {
+    await sendAll();
+    await sweep();
+    expect(threadReplies('Corvid Analytics - New Pro: waiting on you')).toHaveLength(1);
+    await sweep();
+    await sweep();
+    expect(threadReplies('Corvid Analytics - New Pro: waiting on you')).toHaveLength(1);
+    // The answer counts, so the question is no longer "no reply yet"
+    const corvid = await idOf('Corvid');
+    const threads = await messagesByDeal([{ Id: corvid, accountName: 'Corvid Analytics' }]);
+    expect(threads[corvid]?.unanswered).toBe(false);
+  });
+
+  it('reminds the channel’s owner once when a deal waits on a person, and creates no item', async () => {
+    await sendAll();
+    const kindsBefore = new Set(openAlerts().map((a) => a.kind));
+    await sweep();
+    await sweep();
+    expect(threadReplies('Reminder for Deal Desk')).toHaveLength(1);
+    // The channel messages add no items. The sweep only adds what the other systems report.
+    const added = openAlerts().filter((a) => !kindsBefore.has(a.kind));
+    expect(added.every((a) => a.kind === 'payment' || a.kind === 'overdue')).toBe(true);
+    expect(openAlerts().filter((a) => a.kind === 'rep_message')).toHaveLength(0);
+    const lumen = await idOf('Lumen');
+    const threads = await messagesByDeal([{ Id: lumen, accountName: 'Lumen Hochschule' }]);
+    expect(threads[lumen]?.unanswered).toBe(true); // a person still has to decide
+  });
+});
+
+describe('a rep who does not fix their part', () => {
+  const managerUpdates = () =>
+    readDb().slack.messages.filter((m) => m.text.startsWith('Weekly update:'));
+
+  it('reminds the rep first, and the sales manager only after the limit, once a week', async () => {
+    await sendAll();
+    await sweep(); // 6 Nov: Corvid and the others closed 2 to 6 Nov, under the limit for most
+    const early = managerUpdates().length;
+    await advanceDays(7); // past the limit
+    expect(managerUpdates().length).toBe(early + 1);
+    const update = managerUpdates().at(-1)?.text ?? '';
+    expect(update).toContain('Corvid Analytics');
+    expect(update).toContain('license count');
+    await advanceDays(3); // less than a week later: nothing new
+    expect(managerUpdates().length).toBe(early + 1);
+    await advanceDays(7); // a week later: again, while things are still open
+    expect(managerUpdates().length).toBe(early + 2);
+  });
+
+  it('says nothing to the manager when the rep has fixed it', async () => {
+    await sendAll();
+    for (const n of ['Corvid', 'Quill', 'Alpenblick', 'Arcadia', 'Maris', 'Vantera']) {
+      await demoFix(await idOf(n));
+    }
+    await advanceDays(10);
+    expect(managerUpdates()).toHaveLength(0);
+  });
+});
+
+describe('finance replies where the rep asked', () => {
+  it('posts in the same channel and thread, not in #finance-billing', async () => {
+    await sendAll();
+    const corvid = await idOf('Corvid');
+    const db = readDb();
+    const channel = db.slack.channels.find((c) => c.name === 'revops-help');
+    const asked = db.slack.messages.find((m) => m.text.startsWith('Corvid signed for 8'));
+    if (!channel || !asked) throw new Error('no message');
+    await financeReply(corvid, 'Yes, it matters. We bill 8.', undefined, {
+      channel: 'revops-help',
+      threadTs: asked.ts,
+    });
+    const reply = readDb().slack.messages.find((m) => m.text.includes('Yes, it matters'));
+    expect(reply?.channel).toBe(channel.id);
+    expect(reply?.threadTs).toBe(asked.ts);
+    // Jordan Reyes is tagged
+    expect(reply?.text).toContain('<@U04JRDNRYS>');
+  });
+});
+
+describe('discount approval from the deal', () => {
+  it('does not ask twice when a request is already open', async () => {
+    await sendAll();
+    const lumen = await idOf('Lumen');
+    const before = readDb().slack.messages.length;
+    expect(await requestApproval(lumen)).toBe('already_open');
+    expect(readDb().slack.messages.length).toBe(before);
+  });
+
+  it('posts the request in #deal-desk with a link to the deal in Salesforce', async () => {
+    await sendAll();
+    const lumen = await idOf('Lumen');
+    await salesforce.updateOpportunity(lumen, { Discount_Approval__c: 'Not required' });
+    expect(await requestApproval(lumen)).toBe('requested');
+    const post = readDb().slack.messages.find((m) => m.text.startsWith('Discount approval requested'));
+    expect(post?.text).toContain(`</deals/${lumen}|`);
+    expect((await salesforce.getOpportunity(lumen)).Discount_Approval__c).toBe('Pending');
+  });
+
+  it('sends the deal through when Deal Desk approves, and tells the rep', async () => {
+    await sendAll();
+    const lumen = await idOf('Lumen');
+    expect(getHandoff(lumen)?.status).toBe('waiting_finance');
+    await decideApproval(lumen, 'Approved');
+    expect((await salesforce.getOpportunity(lumen)).Discount_Approval__c).toBe('Approved');
+    expect(['processed', 'waiting_finance', 'waiting_rep']).toContain(getHandoff(lumen)?.status);
+    expect(
+      readDb().slack.messages.some((m) => m.text.includes('Deal Desk approved the discount')),
+    ).toBe(true);
+    expect(openAlerts().some((a) => a.oppId === lumen && a.title === 'Discount approval')).toBe(
+      false,
+    );
+  });
+
+  it('gives a rejected discount back to the rep', async () => {
+    await sendAll();
+    const lumen = await idOf('Lumen');
+    await decideApproval(lumen, 'Rejected');
+    expect(getHandoff(lumen)?.status).toBe('waiting_rep');
   });
 });
 
