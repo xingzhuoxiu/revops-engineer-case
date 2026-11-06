@@ -93,9 +93,16 @@ export default async function DealPage(props: PageProps<'/deals/[id]'>) {
     <Page>
       <PageHeader
         eyebrow={
-          <Link href={`/accounts/${account.Id}`} className="hover:underline">
-            {account.Name}
-          </Link>
+          <span className="flex items-center gap-2">
+            <span className="flex size-6 items-center justify-center rounded bg-[#fcb95b] font-bold text-[10px] text-white">
+              $
+            </span>
+            Opportunity
+            <span className="text-muted-foreground">·</span>
+            <Link href={`/accounts/${account.Id}`} className="hover:underline">
+              {account.Name}
+            </Link>
+          </span>
         }
         title={opportunity.Name}
         actions={

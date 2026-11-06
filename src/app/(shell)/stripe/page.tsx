@@ -25,7 +25,19 @@ export default async function StripePage(props: PageProps<'/stripe'>) {
 
   return (
     <Page>
-      <PageHeader title="Stripe" description="Card payments." />
+      <PageHeader title="Subscriptions" description="Card payments." />
+      <div className="grid gap-3 sm:grid-cols-3">
+        {[
+          ['Active', subscriptions.filter((s) => s.status === 'active').length],
+          ['Past due', subscriptions.filter((s) => s.status === 'past_due').length],
+          ['Canceled', subscriptions.filter((s) => s.status === 'canceled').length],
+        ].map(([label, n]) => (
+          <div key={label} className="rounded-lg border bg-card p-4 shadow-xs">
+            <div className="text-muted-foreground text-xs">{label}</div>
+            <div className="mt-1 font-semibold text-2xl tabular-nums">{n}</div>
+          </div>
+        ))}
+      </div>
       <TabsNav
         active={active}
         tabs={[
@@ -43,7 +55,7 @@ export default async function StripePage(props: PageProps<'/stripe'>) {
           },
         ]}
       />
-      <div className="rounded-lg border">
+      <div className="rounded-lg border bg-card shadow-xs [&_th]:text-muted-foreground [&_th]:text-xs [&_th]:uppercase [&_th]:tracking-wide">
         {active === 'subscriptions' ? (
           <Table>
             <TableHeader>

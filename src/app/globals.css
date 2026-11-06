@@ -118,6 +118,65 @@
   }
 }
 
+/*
+ * Each mock system suggests its real product: colours, corners, page background.
+ * Light mode only. The violet "I built this" marking uses fixed Tailwind violet, so
+ * it stays the same in every system.
+ */
+@media (prefers-color-scheme: light) {
+  /* Salesforce Lightning: blue, grey page, small corners */
+  [data-system="salesforce"] {
+    --primary: #0176d3;
+    --primary-foreground: #fff;
+    --ring: #1b96ff;
+    --background: #f3f3f3;
+    --card: #fff;
+    --muted: #f3f3f3;
+    --border: #dddbda;
+    --radius: 0.25rem;
+  }
+  /* Stripe dashboard: indigo accent, cool grey page, soft corners */
+  [data-system="stripe"] {
+    --primary: #635bff;
+    --primary-foreground: #fff;
+    --ring: #a5a0ff;
+    --background: #f6f9fc;
+    --card: #fff;
+    --muted: #eef2f7;
+    --border: #e3e8ee;
+    --muted-foreground: #697386;
+    --radius: 0.5rem;
+  }
+  /* Slack: aubergine, white message area */
+  [data-system="slack"] {
+    --primary: #611f69;
+    --primary-foreground: #fff;
+    --ring: #a56fb0;
+    --background: #fff;
+    --muted: #f4ede4;
+    --border: #e0d6e2;
+    --radius: 0.5rem;
+  }
+  /* Kleer: calm green, plain paper */
+  [data-system="kleer"] {
+    --primary: #0f766e;
+    --primary-foreground: #fff;
+    --ring: #5eb0a8;
+    --background: #fafaf8;
+    --border: #e5e5df;
+    --radius: 0.375rem;
+  }
+  /* Admin app: neutral internal tool, dark slate accent */
+  [data-system="admin"] {
+    --primary: #1e293b;
+    --primary-foreground: #fff;
+    --ring: #64748b;
+    --background: #f8fafc;
+    --border: #e2e8f0;
+    --radius: 0.375rem;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

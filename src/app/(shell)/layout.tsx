@@ -1,4 +1,5 @@
 import { AppSidebar } from '@/components/shell/app-sidebar';
+import { SystemSkin } from '@/components/shell/system-skin';
 import { Separator } from '@/components/ui/separator';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 
@@ -15,7 +16,7 @@ export default function ShellLayout({ children }: LayoutProps<'/'>) {
           <Separator orientation="vertical" className="mr-2 h-4" />
           <span className="text-muted-foreground text-sm">Week of 2 November 2026</span>
         </header>
-        {children}
+        <SystemSkin>{children}</SystemSkin>
       </SidebarInset>
     </SidebarProvider>
   );
