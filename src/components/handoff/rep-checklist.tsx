@@ -162,9 +162,15 @@ export async function RepChecklist({ oppId }: { oppId: string }) {
                       : 'flex items-center gap-1 text-amber-700 dark:text-amber-400'
                   }
                 >
-                  {s.done ? <Check className="size-4" /> : <span className="size-2 rounded-full bg-amber-500" />}
+                  {s.done ? (
+                    <Check className="size-4" />
+                  ) : (
+                    <span className="size-2 rounded-full bg-amber-500" />
+                  )}
                   {s.label}
-                  {s.note ? <span className="font-normal text-muted-foreground">{s.note}</span> : null}
+                  {s.note ? (
+                    <span className="font-normal text-muted-foreground">{s.note}</span>
+                  ) : null}
                 </span>
               </li>
             ))}
@@ -210,7 +216,8 @@ export async function RepChecklist({ oppId }: { oppId: string }) {
                 ([label]) =>
                   (label !== 'VAT ID valid' || account.VAT_Number__c) &&
                   (label !== 'Purchase order present' || account.PO_Required__c) &&
-                (label !== 'Discount approved' || (opp.Discount__c ?? 0) > policy.discountApprovalPct),
+                  (label !== 'Discount approved' ||
+                    (opp.Discount__c ?? 0) > policy.discountApprovalPct),
               ).map(([label, rules]) => {
                 const bad = repFails.filter((f) => rules.includes(f.rule));
                 if (bad.length === 0) {
@@ -303,8 +310,8 @@ export async function RepChecklist({ oppId }: { oppId: string }) {
               {opp.Discount_Approval__c === 'Pending' ? (
                 <div className="flex flex-col gap-2">
                   <p>
-                    <strong>Approval requested</strong> in #deal-desk, with a link to this deal.
-                    You get a Slack message when Deal Desk decides.
+                    <strong>Approval requested</strong> in #deal-desk, with a link to this deal. You
+                    get a Slack message when Deal Desk decides.
                   </p>
                   <form action={decideApprovalAction} className="flex flex-col items-start gap-1">
                     <input type="hidden" name="oppId" value={oppId} />
@@ -329,8 +336,8 @@ export async function RepChecklist({ oppId }: { oppId: string }) {
                       </Button>
                     </div>
                     <span className="text-muted-foreground text-xs">
-                      Deal Desk follows the link in #deal-desk and decides here. In Salesforce
-                      this is the approval step on the record.
+                      Deal Desk follows the link in #deal-desk and decides here. In Salesforce this
+                      is the approval step on the record.
                     </span>
                   </form>
                 </div>

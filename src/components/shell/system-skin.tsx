@@ -114,9 +114,9 @@ function TopBar({ system, path }: { system: System; path: string }) {
   }
   if (system === 'admin') {
     return (
-      <header className="sticky top-12 z-10 flex items-center gap-3 bg-slate-900 px-4 py-2 text-slate-100">
+      <header className="sticky top-12 z-10 flex items-center gap-3 border-b bg-background px-4 py-2">
         <span className="font-semibold text-sm">Admin</span>
-        <span className="text-slate-400 text-xs">Internal, for Mentimeter staff only</span>
+        <span className="text-muted-foreground text-xs">Internal, for Mentimeter staff only</span>
       </header>
     );
   }

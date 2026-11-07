@@ -38,7 +38,8 @@ export const accountSnapshotOf = (a: SalesforceAccount) =>
 
 const day = (iso: string | null) => (iso ? iso.slice(0, 10) : null);
 
-export const isOverdue = (i: KleerInvoice, today: string) => i.status === 'sent' && i.dueDate < today;
+export const isOverdue = (i: KleerInvoice, today: string) =>
+  i.status === 'sent' && i.dueDate < today;
 
 /** The words a rep sees for an invoice. */
 export const invoiceLabel = (i: KleerInvoice, today: string) =>
@@ -64,7 +65,9 @@ export async function syncBack(only?: string[]) {
     adminApp.listSubscriptions(),
     stripe.listSubscriptions(),
   ]);
-  const accountIds = [...new Set(processed.map((h) => h.accountId).filter((id): id is string => !!id))];
+  const accountIds = [
+    ...new Set(processed.map((h) => h.accountId).filter((id): id is string => !!id)),
+  ];
   const accounts = new Map(
     (accountIds.length ? await salesforce.listAccounts(accountIds) : []).map((a) => [a.Id, a]),
   );
@@ -176,7 +179,10 @@ export async function syncBack(only?: string[]) {
   }
 
   // 5. Failed card payments: linked to the deal when we know it, and the rep is told
-  await paymentFailures(stripeSubs.filter((s) => s.status === 'past_due'), today);
+  await paymentFailures(
+    stripeSubs.filter((s) => s.status === 'past_due'),
+    today,
+  );
 }
 
 async function paymentFailures(
@@ -193,7 +199,9 @@ async function paymentFailures(
     let ownerId = h?.ownerId ?? null;
     let repName = h?.repName ?? null;
     if (!ownerId && customer.metadata.workspace_id) {
-      const workspace = await adminApp.getWorkspace(customer.metadata.workspace_id).catch(() => null);
+      const workspace = await adminApp
+        .getWorkspace(customer.metadata.workspace_id)
+        .catch(() => null);
       const account = workspace?.salesforceAccountId
         ? await salesforce.getAccount(workspace.salesforceAccountId).catch(() => null)
         : null;

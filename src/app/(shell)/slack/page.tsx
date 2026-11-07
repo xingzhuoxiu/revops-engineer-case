@@ -1,9 +1,9 @@
 import { Hash, Lock } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { SlackRich } from '@/components/handoff/slack-rich';
 import { slack } from '@/lib/connectors';
 import { formatDateTime, initials } from '@/lib/format';
-import { SlackRich } from '@/components/handoff/slack-rich';
 import { cn } from '@/lib/utils';
 
 export const metadata: Metadata = { title: 'Slack' };

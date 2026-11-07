@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Status } from '@/components/data/status';
-import { TabsNav } from '@/components/data/tabs-nav';
 import { BuiltNote } from '@/components/handoff/built';
 import { Exceptions, exceptionCount } from '@/components/handoff/exceptions';
 import { ReadyToBill } from '@/components/handoff/ready-to-bill';
@@ -62,140 +61,168 @@ export default async function AdminAppPage(props: PageProps<'/admin-app'>) {
     );
   };
 
+  const nav = [
+    {
+      id: 'subscriptions',
+      label: 'Subscriptions',
+      href: '/admin-app',
+      count: subscriptions.length,
+    },
+    {
+      id: 'workspaces',
+      label: 'Workspaces',
+      href: '/admin-app?tab=workspaces',
+      count: workspaces.length,
+    },
+    {
+      id: 'ready',
+      label: 'Ready to bill',
+      href: '/admin-app?tab=ready',
+      count: ready,
+      isNew: true,
+    },
+    {
+      id: 'exceptions',
+      label: 'Exceptions',
+      href: '/admin-app?tab=exceptions',
+      count: exceptionCount(),
+      isNew: true,
+    },
+    { id: 'rules', label: 'Rules', href: '/admin-app?tab=rules', count: null, isNew: true },
+  ];
+
   return (
     <Page>
-      <PageHeader
-        title="Admin app"
-        description="Mentimeter's internal app for workspaces and subscriptions."
-      />
-      <TabsNav
-        active={active}
-        tabs={[
-          {
-            id: 'subscriptions',
-            label: 'Subscriptions',
-            href: '/admin-app',
-            count: subscriptions.length,
-          },
-          {
-            id: 'workspaces',
-            label: 'Workspaces',
-            href: '/admin-app?tab=workspaces',
-            count: workspaces.length,
-          },
-          {
-            id: 'ready',
-            label: 'Ready to bill',
-            href: '/admin-app?tab=ready',
-            count: ready,
-            isNew: true,
-          },
-          {
-            id: 'exceptions',
-            label: 'Exceptions',
-            href: '/admin-app?tab=exceptions',
-            count: exceptionCount(),
-            isNew: true,
-          },
-          { id: 'rules', label: 'Rules', href: '/admin-app?tab=rules', isNew: true },
-        ]}
-      />
-      {NOTES[active] ? (
-        <BuiltNote title={NOTES[active].title}>{NOTES[active].text}</BuiltNote>
-      ) : null}
-      {active === 'ready' ? (
-        <ReadyToBill
-          deal={typeof deal === 'string' ? deal : undefined}
-          preview={preview === '1'}
-          filter={typeof filter === 'string' ? filter : undefined}
-        />
-      ) : active === 'exceptions' ? (
-        <Exceptions />
-      ) : active === 'rules' ? (
-        <Rules />
-      ) : (
-        <div className="rounded-lg border">
-          {active === 'subscriptions' ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Subscription</TableHead>
-                  <TableHead>Workspace</TableHead>
-                  <TableHead>Account</TableHead>
-                  <TableHead className="text-right">Seats</TableHead>
-                  <TableHead>Period</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Billing</TableHead>
-                  <TableHead>Created by</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {subscriptions.map((s) => (
-                  <TableRow key={s.id}>
-                    <TableCell className="font-mono text-xs">{s.id}</TableCell>
-                    <TableCell className="text-sm">
-                      {workspace(s.workspaceId)?.name}
-                      <div className="font-mono text-muted-foreground text-xs">{s.workspaceId}</div>
-                    </TableCell>
-                    <TableCell className="text-sm">{accountCell(s.salesforceAccountId)}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {s.seats} {s.plan}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {formatDate(s.startDate)} to {formatDate(s.endDate)}
-                      {s.autoRenew ? (
-                        <div className="text-muted-foreground text-xs">Renews automatically</div>
-                      ) : null}
-                    </TableCell>
-                    <TableCell>
-                      <Status value={s.status} />
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {s.billingSystem}
-                      <div className="font-mono text-muted-foreground text-xs">
-                        {s.billingReference}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-xs">{s.createdBy}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+      <PageHeader title="Admin app" />
+      <div className="grid items-start gap-8 md:grid-cols-[11rem_minmax(0,1fr)]">
+        <nav className="flex flex-col text-sm">
+          {nav.map((n) => (
+            <Link
+              key={n.id}
+              href={n.href}
+              className={`flex items-center justify-between rounded-sm px-2 py-1.5 hover:bg-muted ${
+                active === n.id ? 'bg-muted font-medium' : 'text-muted-foreground'
+              }`}
+            >
+              <span className="flex items-center gap-1.5">
+                {n.label}
+                {n.isNew ? <span className="size-1.5 rounded-full bg-violet-600" /> : null}
+              </span>
+              {n.count === null ? null : (
+                <span className="text-muted-foreground text-xs tabular-nums">{n.count}</span>
+              )}
+            </Link>
+          ))}
+        </nav>
+        <div className="flex min-w-0 flex-col gap-4">
+          {NOTES[active] ? (
+            <BuiltNote title={NOTES[active].title}>{NOTES[active].text}</BuiltNote>
+          ) : null}
+          {active === 'ready' ? (
+            <ReadyToBill
+              deal={typeof deal === 'string' ? deal : undefined}
+              preview={preview === '1'}
+              filter={typeof filter === 'string' ? filter : undefined}
+            />
+          ) : active === 'exceptions' ? (
+            <Exceptions />
+          ) : active === 'rules' ? (
+            <Rules />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Workspace</TableHead>
-                  <TableHead>Account</TableHead>
-                  <TableHead>Domain</TableHead>
-                  <TableHead>Plan</TableHead>
-                  <TableHead className="text-right">Members</TableHead>
-                  <TableHead>Region</TableHead>
-                  <TableHead>Created</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {workspaces.map((w) => (
-                  <TableRow key={w.id}>
-                    <TableCell>
-                      <div className="font-medium text-sm">{w.name}</div>
-                      <div className="font-mono text-muted-foreground text-xs">{w.id}</div>
-                    </TableCell>
-                    <TableCell className="text-sm">{accountCell(w.salesforceAccountId)}</TableCell>
-                    <TableCell className="text-sm">{w.domain}</TableCell>
-                    <TableCell>
-                      <Status value={w.plan} />
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{w.activeMembers}</TableCell>
-                    <TableCell className="text-sm">{w.region}</TableCell>
-                    <TableCell className="text-sm">{formatDate(w.createdAt)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="border-y">
+              {active === 'subscriptions' ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Subscription</TableHead>
+                      <TableHead>Workspace</TableHead>
+                      <TableHead>Account</TableHead>
+                      <TableHead className="text-right">Seats</TableHead>
+                      <TableHead>Period</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Billing</TableHead>
+                      <TableHead>Created by</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {subscriptions.map((s) => (
+                      <TableRow key={s.id}>
+                        <TableCell className="font-mono text-xs">{s.id}</TableCell>
+                        <TableCell className="text-sm">
+                          {workspace(s.workspaceId)?.name}
+                          <div className="font-mono text-muted-foreground text-xs">
+                            {s.workspaceId}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {accountCell(s.salesforceAccountId)}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {s.seats} {s.plan}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {formatDate(s.startDate)} to {formatDate(s.endDate)}
+                          {s.autoRenew ? (
+                            <div className="text-muted-foreground text-xs">
+                              Renews automatically
+                            </div>
+                          ) : null}
+                        </TableCell>
+                        <TableCell>
+                          <Status value={s.status} />
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {s.billingSystem}
+                          <div className="font-mono text-muted-foreground text-xs">
+                            {s.billingReference}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground text-xs">
+                          {s.createdBy}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Workspace</TableHead>
+                      <TableHead>Account</TableHead>
+                      <TableHead>Domain</TableHead>
+                      <TableHead>Plan</TableHead>
+                      <TableHead className="text-right">Members</TableHead>
+                      <TableHead>Region</TableHead>
+                      <TableHead>Created</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {workspaces.map((w) => (
+                      <TableRow key={w.id}>
+                        <TableCell>
+                          <div className="font-medium text-sm">{w.name}</div>
+                          <div className="font-mono text-muted-foreground text-xs">{w.id}</div>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {accountCell(w.salesforceAccountId)}
+                        </TableCell>
+                        <TableCell className="text-sm">{w.domain}</TableCell>
+                        <TableCell>
+                          <Status value={w.plan} />
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">{w.activeMembers}</TableCell>
+                        <TableCell className="text-sm">{w.region}</TableCell>
+                        <TableCell className="text-sm">{formatDate(w.createdAt)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
           )}
         </div>
-      )}
+      </div>
     </Page>
   );
 }

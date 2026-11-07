@@ -23,7 +23,6 @@ import type { SalesforceEvent, Workspace } from '@/lib/systems/types';
 import { answerChannels } from './channels';
 import { evaluateLive } from './context';
 import { dmOwner, dmRep, mentionOf, postAs, postToDealDesk, TEMPLATES } from './slack';
-import { accountSnapshotOf, SYNC_FIELDS, syncBack } from './sync';
 import {
   type Alert,
   appToday,
@@ -38,6 +37,7 @@ import {
   saveHandoff,
   syncAlerts,
 } from './store';
+import { accountSnapshotOf, SYNC_FIELDS, syncBack } from './sync';
 
 /** Fields our own hand-off writes back. An event that changes only these is our own echo. */
 const OWN_FIELDS = new Set([
@@ -187,8 +187,7 @@ async function processDeal(oppId: string): Promise<Outcome> {
       title: TITLES[f.rule] ?? f.rule,
       message: f.message,
       queue: queueOf(f),
-      ownerLabel:
-        f.owner === 'deal_desk' ? 'Deal Desk (approves discounts over 25%)' : null,
+      ownerLabel: f.owner === 'deal_desk' ? 'Deal Desk (approves discounts over 25%)' : null,
       due: result.due,
     })),
   );
@@ -443,7 +442,10 @@ async function runHandoff(ctx: DealContext, result: Evaluation, start: Handoff):
 /** When this deal replaces a plan, the customer needs the new billing secured before the old one ends. */
 const endsNote = (replaces: Handoff['replaces']) =>
   replaces?.length
-    ? ` The customer's current plan (${replaces.map((r) => r.id).join(', ')}) ends on ${replaces.map((r) => r.endDate).sort().at(-1)}. The invoice has to be sent before then, or they lose access.`
+    ? ` The customer's current plan (${replaces.map((r) => r.id).join(', ')}) ends on ${replaces
+        .map((r) => r.endDate)
+        .sort()
+        .at(-1)}. The invoice has to be sent before then, or they lose access.`
     : '';
 
 const billingDone = (system: 'Kleer' | 'Stripe') =>
@@ -577,7 +579,10 @@ export async function decideApproval(oppId: string, decision: 'Approved' | 'Reje
       ? `Approved by Deal Desk: ${opp.Name}.`
       : `Not approved by Deal Desk: ${opp.Name}.`,
   );
-  await dmRep(opp, decision === 'Approved' ? TEMPLATES.approved(opp.Name) : TEMPLATES.rejected(opp.Name));
+  await dmRep(
+    opp,
+    decision === 'Approved' ? TEMPLATES.approved(opp.Name) : TEMPLATES.rejected(opp.Name),
+  );
   return processDeal(oppId);
 }
 

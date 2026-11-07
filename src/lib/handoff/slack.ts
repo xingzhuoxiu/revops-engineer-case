@@ -48,7 +48,7 @@ export async function mentionOf(ownerId: string): Promise<string> {
   }
 }
 
-export const dmRep =(opp: Opp, text: string) => dmOwner(opp.OwnerId, `${text}\n${dealRef(opp)}`);
+export const dmRep = (opp: Opp, text: string) => dmOwner(opp.OwnerId, `${text}\n${dealRef(opp)}`);
 
 /** Posts in #finance-billing on behalf of a person. The prefix lets us file it and tell who spoke. */
 export const postAs = (

@@ -35,7 +35,11 @@ const DOT: Record<Tone, string> = {
 /** Each condition, in one line, so a rep can read the column without a key. */
 export const LEGEND: { tone: Tone; label: string; means: string }[] = [
   { tone: 'amber', label: 'Waiting on rep', means: 'something to fix on the deal' },
-  { tone: 'blue', label: 'With finance', means: 'finance or Deal Desk decides, nothing for the rep' },
+  {
+    tone: 'blue',
+    label: 'With finance',
+    means: 'finance or Deal Desk decides, nothing for the rep',
+  },
   { tone: 'green', label: 'Processed', means: 'set up. The line below says where billing is' },
   { tone: 'red', label: 'Needs attention', means: 'overdue invoice or failed payment' },
   { tone: 'grey', label: 'Not in hand-off', means: 'not Closed Won, or not sent yet' },

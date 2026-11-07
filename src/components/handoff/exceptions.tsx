@@ -1,9 +1,5 @@
 import Link from 'next/link';
-import {
-  askRepAction,
-  checkAgain,
-  replyAction,
-} from '@/app/(shell)/handoff-actions';
+import { askRepAction, checkAgain, replyAction } from '@/app/(shell)/handoff-actions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatDate, formatDateTime } from '@/lib/format';
@@ -52,36 +48,29 @@ export async function Exceptions() {
   return (
     <div className="flex flex-col gap-4">
       {rows.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground text-sm">
-          Nothing is waiting on finance.
-        </div>
+        <div className="py-6 text-muted-foreground text-sm">Nothing is waiting on finance.</div>
       ) : (
-        <div className="grid items-start gap-4 lg:grid-cols-3">
+        <div className="grid items-start gap-8 lg:grid-cols-3">
           {COLUMNS.map((col) => {
             const items = rows.filter((a) => columnOf(a) === col.id);
             return (
-              <section key={col.id} className="flex flex-col gap-3 rounded-lg bg-muted/40 p-3">
-                <header>
-                  <div className="flex items-center justify-between">
+              <section key={col.id} className="flex flex-col">
+                <header className="border-b pb-2">
+                  <div className="flex items-baseline justify-between">
                     <h3 className="font-medium text-sm">{col.label}</h3>
-                    <span className="rounded-full bg-violet-600 px-2 py-0.5 text-white text-xs">
+                    <span className="text-muted-foreground text-xs tabular-nums">
                       {items.length}
                     </span>
                   </div>
                   <Owner id={col.id} />
                 </header>
                 {items.length === 0 ? (
-                  <p className="rounded-lg border border-dashed p-4 text-center text-muted-foreground text-xs">
-                    Nothing here.
-                  </p>
+                  <p className="py-3 text-muted-foreground text-xs">Nothing here.</p>
                 ) : (
                   items.map((a) => {
                     const overdue = !!a.due && a.due < today;
                     return (
-                      <article
-                        key={a.id}
-                        className="flex flex-col gap-2 rounded-lg border bg-card p-3 text-sm shadow-xs"
-                      >
+                      <article key={a.id} className="flex flex-col gap-2 border-b py-3 text-sm">
                         {a.oppId ? (
                           <div>
                             <Link
@@ -126,7 +115,7 @@ export async function Exceptions() {
       )}
 
       {withMessages.length > 0 ? (
-        <details className="rounded-lg border p-3 text-sm">
+        <details className="text-sm">
           <summary className="cursor-pointer font-medium">
             Slack messages about deals ({withMessages.length})
           </summary>
@@ -204,7 +193,7 @@ function Action({ a, rep, customer }: { a: Alert; rep: string; customer: string 
     return (
       <form action={checkAgain}>
         <input type="hidden" name="oppId" value={a.oppId} />
-        <Button type="submit" variant="outline" size="sm">
+        <Button type="submit" variant="ghost" size="sm" className="-ml-2.5">
           Try again
         </Button>
       </form>
@@ -214,22 +203,17 @@ function Action({ a, rep, customer }: { a: Alert; rep: string; customer: string 
   if (a.title === 'Discount approval') {
     return (
       <div className="flex flex-col gap-1">
-        <Link
-          href={`/deals/${a.oppId}`}
-          className="w-fit rounded-lg border px-2.5 py-1 text-sm hover:bg-muted"
-        >
+        <Link href={`/deals/${a.oppId}`} className="w-fit text-sm underline underline-offset-2">
           Open the deal to approve
         </Link>
-        <span className="text-muted-foreground text-xs">
-          Deal Desk approves or rejects on the deal in Salesforce. {rep} is told.
-        </span>
+        <span className="text-muted-foreground text-xs">{rep} is told when it is decided.</span>
       </div>
     );
   }
   const reply = a.kind === 'rep_message';
   return (
     <details>
-      <summary className="w-fit cursor-pointer rounded-lg border px-2.5 py-1 text-sm hover:bg-muted">
+      <summary className="w-fit cursor-pointer text-sm underline underline-offset-2">
         {reply ? `Reply to ${rep}` : `Ask ${rep}`}
       </summary>
       <form action={reply ? replyAction : askRepAction} className="mt-2 flex flex-col gap-2">

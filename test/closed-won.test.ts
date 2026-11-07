@@ -435,10 +435,13 @@ describe('after billing: the other systems report back', () => {
     const fjordline = await idOf('Fjordline');
     await sendInvoice(fjordline);
     await advanceDays(35);
-    const overdue = openAlerts('credit').filter((a) => a.kind === 'overdue' && a.oppId === fjordline);
+    const overdue = openAlerts('credit').filter(
+      (a) => a.kind === 'overdue' && a.oppId === fjordline,
+    );
     expect(overdue).toHaveLength(1);
     expect((await salesforce.getOpportunity(fjordline)).Invoice_Status__c).toBe('Overdue');
-    const told = () => readDb().slack.messages.filter((m) => m.text.includes('and is not paid')).length;
+    const told = () =>
+      readDb().slack.messages.filter((m) => m.text.includes('and is not paid')).length;
     const before = told();
     await sweep();
     expect(told()).toBe(before); // a second sweep does not message again
@@ -458,10 +461,12 @@ describe('after billing: the other systems report back', () => {
     const event = events.find((e) => e.opportunityId === fjordline);
     if (!event) throw new Error('no event');
     const before = await kleer.findInvoices({ foreignId: fjordline });
-    expect(await handleEvent({ ...event, type: 'opportunity.reopened', changedFields: ['StageName'] })).toBe(
-      'locked',
+    expect(
+      await handleEvent({ ...event, type: 'opportunity.reopened', changedFields: ['StageName'] }),
+    ).toBe('locked');
+    expect(openAlerts('billing').some((a) => a.kind === 'reopened' && a.oppId === fjordline)).toBe(
+      true,
     );
-    expect(openAlerts('billing').some((a) => a.kind === 'reopened' && a.oppId === fjordline)).toBe(true);
     expect(await kleer.findInvoices({ foreignId: fjordline })).toEqual(before);
   });
 
@@ -471,14 +476,15 @@ describe('after billing: the other systems report back', () => {
     const { AccountId } = await salesforce.getOpportunity(fjordline);
     await salesforce.updateAccount(AccountId, { Invoice_Email__c: 'someone.else@example.com' });
     await sweep();
-    expect(openAlerts('billing').some((a) => a.kind === 'account_changed' && a.oppId === fjordline)).toBe(
-      true,
-    );
+    expect(
+      openAlerts('billing').some((a) => a.kind === 'account_changed' && a.oppId === fjordline),
+    ).toBe(true);
   });
 });
 
 describe('the rep hears about every status change, once', () => {
-  const said = (text: string) => readDb().slack.messages.filter((m) => m.text.includes(text)).length;
+  const said = (text: string) =>
+    readDb().slack.messages.filter((m) => m.text.includes(text)).length;
 
   it('tells the rep when a deal is processed and when it goes to finance', async () => {
     await sendAll();
@@ -599,7 +605,9 @@ describe('discount approval from the deal', () => {
     const lumen = await idOf('Lumen');
     await salesforce.updateOpportunity(lumen, { Discount_Approval__c: 'Not required' });
     expect(await requestApproval(lumen)).toBe('requested');
-    const post = readDb().slack.messages.find((m) => m.text.startsWith('Discount approval requested'));
+    const post = readDb().slack.messages.find((m) =>
+      m.text.startsWith('Discount approval requested'),
+    );
     expect(post?.text).toContain(`</deals/${lumen}|`);
     expect((await salesforce.getOpportunity(lumen)).Discount_Approval__c).toBe('Pending');
   });

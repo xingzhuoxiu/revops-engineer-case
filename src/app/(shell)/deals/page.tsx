@@ -102,7 +102,10 @@ export default async function DealsPage(props: PageProps<'/deals'>) {
           Search
         </button>
         {search ? (
-          <Link href={href({ q: undefined })} className="text-muted-foreground text-sm hover:underline">
+          <Link
+            href={href({ q: undefined })}
+            className="text-muted-foreground text-sm hover:underline"
+          >
             Clear
           </Link>
         ) : null}

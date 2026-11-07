@@ -83,7 +83,7 @@ export function Rules() {
           </div>
         </div>
 
-        <div className="rounded-lg border p-4">
+        <div className="border-t pt-4">
           <label className="flex items-center gap-2 font-medium text-sm">
             <input
               type="checkbox"
@@ -104,7 +104,7 @@ export function Rules() {
           {(Object.keys(policy.queues) as QueueId[]).map((id) => {
             const q = policy.queues[id];
             return (
-              <div key={id} className="flex flex-col gap-2 rounded-lg border p-4">
+              <div key={id} className="flex flex-col gap-2 border-t pt-4">
                 <h3 className="font-medium text-sm">{q.name} queue</h3>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="flex flex-col gap-1">
@@ -129,7 +129,7 @@ export function Rules() {
           <Button type="submit">Save</Button>
           <Link
             href="/admin-app?tab=rules"
-            className="rounded-lg px-2.5 py-1 text-sm hover:bg-muted"
+            className="px-2.5 py-1 text-muted-foreground text-sm hover:text-foreground"
           >
             Discard
           </Link>
@@ -154,7 +154,7 @@ export function Rules() {
         )}
       </section>
 
-      <details className="rounded-lg border p-3 text-sm">
+      <details className="border-t pt-3 text-sm">
         <summary className="cursor-pointer">Rules as data</summary>
         <p className="my-2 text-muted-foreground text-xs">
           Same settings as above, as the system stores them. Nothing is hard-coded, so a change

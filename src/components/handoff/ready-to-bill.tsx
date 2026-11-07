@@ -9,9 +9,7 @@ import {
 } from '@/app/(shell)/handoff-actions';
 import { Fields } from '@/components/data/fields';
 import { Status } from '@/components/data/status';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import {
   Table,
   TableBody,
@@ -53,7 +51,7 @@ interface Row {
 }
 
 const DOT: Record<Kind, string> = {
-  to_send: 'bg-violet-600',
+  to_send: 'bg-foreground',
   waiting: 'bg-amber-500',
   done: 'bg-emerald-500',
   ignored: 'bg-slate-300',
@@ -99,7 +97,7 @@ export async function ReadyToBill({
   );
   if (all.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground text-sm">
+      <div className="py-6 text-muted-foreground text-sm">
         No deals yet. Salesforce sends each deal when it is moved to Closed Won. On Dev tools, press
         “Send all to webhook” to send this week’s deals.
       </div>
@@ -129,37 +127,38 @@ export async function ReadyToBill({
     .filter((r) => matches(r, active?.id ?? 'all', active?.kinds ?? null))
     .sort((a, b) => Number(!!b.msg?.unanswered) - Number(!!a.msg?.unanswered));
   const selected = shown.find((r) => r.h.oppId === deal) ?? shown[0];
-  const count = (f: (typeof FILTERS)[number]) => rows.filter((r) => matches(r, f.id, f.kinds)).length;
+  const count = (f: (typeof FILTERS)[number]) =>
+    rows.filter((r) => matches(r, f.id, f.kinds)).length;
   const href = (oppId: string, f = active?.id) =>
     `/admin-app?tab=ready&deal=${oppId}${f && f !== 'all' ? `&filter=${f}` : ''}`;
 
   return (
-    <div className="grid items-start gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]">
-      <div className="flex flex-col gap-3">
-        <nav className="flex flex-wrap gap-1.5">
+    <div className="grid items-start gap-0 lg:grid-cols-[20rem_minmax(0,1fr)]">
+      <div className="flex flex-col gap-3 lg:border-r lg:pr-6">
+        <nav className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
           {FILTERS.map((f) => (
             <Link
               key={f.id}
               href={`/admin-app?tab=ready${f.id === 'all' ? '' : `&filter=${f.id}`}`}
               className={cn(
-                'rounded-full border px-2.5 py-0.5 text-xs transition-colors',
+                'pb-0.5',
                 active?.id === f.id
-                  ? 'border-violet-600 bg-violet-600 text-white'
-                  : 'hover:bg-violet-500/10',
+                  ? 'border-foreground border-b font-medium'
+                  : 'text-muted-foreground hover:text-foreground',
               )}
             >
-              {f.label} {count(f)}
+              {f.label} <span className="text-xs tabular-nums">{count(f)}</span>
             </Link>
           ))}
         </nav>
-        <ul className="flex flex-col divide-y rounded-lg border">
+        <ul className="flex flex-col divide-y border-y">
           {shown.map((r) => (
             <li key={r.h.oppId}>
               <Link
                 href={href(r.h.oppId)}
                 className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-muted/60',
-                  selected?.h.oppId === r.h.oppId && 'bg-violet-500/10',
+                  'flex items-center gap-3 px-2 py-2.5 transition-colors hover:bg-muted',
+                  selected?.h.oppId === r.h.oppId && 'bg-muted',
                 )}
               >
                 <span className={cn('size-2 shrink-0 rounded-full', DOT[r.kind])} />
@@ -193,13 +192,11 @@ export async function ReadyToBill({
         </ul>
         <Demo />
       </div>
-      <div className="min-w-0">
+      <div className="min-w-0 lg:pl-6">
         {selected ? (
           <Detail h={selected.h} preview={!!preview} backHref={href(selected.h.oppId)} />
         ) : (
-          <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground text-sm">
-            Pick a deal from the list.
-          </div>
+          <div className="py-6 text-muted-foreground text-sm">Pick a deal from the list.</div>
         )}
       </div>
     </div>
@@ -251,7 +248,7 @@ async function Detail({
         {invoice?.status === 'draft' ? (
           <Link
             href={`${backHref}&preview=1`}
-            className="rounded-lg bg-violet-600 px-3 py-1.5 font-medium text-sm text-white hover:bg-violet-700"
+            className="rounded-md bg-primary px-3 py-1.5 font-medium text-primary-foreground text-sm hover:opacity-90"
           >
             Preview and send invoice
           </Link>
@@ -259,8 +256,8 @@ async function Detail({
       </div>
 
       {preview && invoice ? (
-        <Card className="ring-2 ring-violet-500/60">
-          <CardContent className="flex flex-col gap-3 text-sm">
+        <div className="border-y py-4">
+          <div className="flex flex-col gap-3 text-sm">
             <div className="flex items-center justify-between">
               <div>
                 <div className="font-medium">Invoice {invoice.invoiceNumber}</div>
@@ -269,7 +266,7 @@ async function Detail({
                   {formatDate(invoice.dueDate)} ({invoice.paymentTermsDays} days).
                 </div>
               </div>
-              <Badge variant="outline">{invoice.status}</Badge>
+              <span className="text-muted-foreground text-xs capitalize">{invoice.status}</span>
             </div>
             <Table>
               <TableHeader>
@@ -314,7 +311,10 @@ async function Detail({
               <form action={sendInvoiceAction} className="flex gap-2">
                 <input type="hidden" name="oppId" value={h.oppId} />
                 <SubmitOnce pendingText="Sending...">Send invoice</SubmitOnce>
-                <Link href={backHref} className="rounded-lg px-2.5 py-1 text-sm hover:bg-muted">
+                <Link
+                  href={backHref}
+                  className="px-2.5 py-1 text-muted-foreground text-sm hover:text-foreground"
+                >
                   Close
                 </Link>
               </form>
@@ -324,21 +324,21 @@ async function Detail({
                   Invoice sent{invoice.sentAt ? ` on ${formatDate(invoice.sentAt)}` : ''}.
                 </span>
                 <span className="text-muted-foreground">It can’t be sent again.</span>
-                <Link href={backHref} className="rounded-lg px-2.5 py-1 hover:bg-muted">
+                <Link href={backHref} className="text-muted-foreground hover:text-foreground">
                   Close
                 </Link>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       ) : null}
 
       {h.status !== 'processed' ? (
-        <p className="rounded-lg border border-dashed p-4 text-muted-foreground text-sm">
+        <p className="text-muted-foreground text-sm">
           Nothing has been set up yet. See the Exceptions tab for what this deal is waiting for.
         </p>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-x-8 gap-y-6 md:grid-cols-2">
           <Block title="Workspace">
             <Fields
               columns={2}
@@ -387,7 +387,7 @@ async function Detail({
         </div>
       )}
 
-      <details className="rounded-lg border p-3 text-sm">
+      <details className="border-t pt-3 text-sm">
         <summary className="cursor-pointer">Copied from Salesforce</summary>
         <div className="mt-3">
           <Fields
@@ -412,7 +412,7 @@ async function Detail({
         </div>
       </details>
 
-      <details className="rounded-lg border p-3 text-sm" open={thread?.unanswered}>
+      <details className="border-t pt-3 text-sm" open={thread?.unanswered}>
         <summary className="cursor-pointer">
           Slack messages about this deal
           {thread?.unanswered ? ' (the rep is waiting for a reply)' : ''}
@@ -436,15 +436,14 @@ async function Detail({
               <Button type="submit" size="sm" formAction={askRepAction}>
                 Send to {h.repName.split(' ')[0]} in Slack
               </Button>
-              <Button type="submit" size="sm" variant="outline" formAction={replyAction}>
+              <Button type="submit" size="sm" variant="ghost" formAction={replyAction}>
                 {asked ? `Reply in ${asked.channel}` : 'Post in #finance-billing'}
               </Button>
             </div>
             <p className="text-muted-foreground text-xs">
-              Both are filed under this deal. The first is a direct message to the rep.{' '}
               {asked
-                ? `The second replies in the thread of ${asked.author}'s message in ${asked.channel}, where they asked, and tags ${h.repName.split(' ')[0]}.`
-                : `The second is a post in the channel that tags ${h.repName.split(' ')[0]}.`}
+                ? `Reply goes in the thread in ${asked.channel} and tags ${h.repName.split(' ')[0]}.`
+                : `Post tags ${h.repName.split(' ')[0]}.`}
             </p>
           </form>
         </div>
@@ -455,19 +454,17 @@ async function Detail({
 
 function Block({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <Card size="sm">
-      <CardContent className="flex flex-col gap-2">
-        <h3 className="font-medium text-sm">{title}</h3>
-        {children}
-      </CardContent>
-    </Card>
+    <section className="flex flex-col gap-2 border-t pt-3">
+      <h3 className="font-medium text-sm">{title}</h3>
+      {children}
+    </section>
   );
 }
 
 /** Demo only. Reset lives on Dev tools. */
 function Demo() {
   return (
-    <details className="rounded-lg border p-3 text-sm">
+    <details className="text-sm">
       <summary className="cursor-pointer text-muted-foreground">Demo controls</summary>
       <div className="mt-3 flex flex-col items-start gap-2">
         <div className="flex gap-2">
