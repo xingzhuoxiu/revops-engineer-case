@@ -200,13 +200,6 @@ async function processDeal(oppId: string): Promise<Outcome> {
   const status = result.verdict === 'rep' ? 'waiting_rep' : 'waiting_finance';
   saveHandoff({ ...base, status });
   if (raised.some((a) => a.queue === 'rep')) await sendDigests();
-  // The rep is told when finance takes the deal, and why, once per set of reasons
-  if (status === 'waiting_finance') {
-    const what = fails.map((f) => (TITLES[f.rule] ?? f.rule).toLowerCase()).join(', ');
-    if (markNotified(oppId, `finance:${what}`)) {
-      await dmRep(opp, TEMPLATES.withFinance(opp.Name, what, result.due));
-    }
-  }
   return status;
 }
 
@@ -349,6 +342,16 @@ async function runHandoff(ctx: DealContext, result: Evaluation, start: Handoff):
     // 3. Subscription: update the existing one on an add-on, otherwise book the new term
     let subscriptionId = h.subscriptionId;
     if (!subscriptionId) {
+      // If our own record was lost, look for what we made before. Salesforce keeps the ID we
+      // wrote back, and the admin app keeps the invoice or charge reference on the subscription.
+      subscriptionId = await findEarlierSubscription(
+        opp.Subscription_ID__c,
+        workspace.id,
+        reference,
+      );
+      if (subscriptionId) save({ subscriptionId });
+    }
+    if (!subscriptionId) {
       if (plan.updates) {
         const updated = await adminApp.updateSubscription(plan.updates.id, {
           seats: opp.Total_Licenses__c ?? plan.updates.seats + licenses,
@@ -407,19 +410,13 @@ async function runHandoff(ctx: DealContext, result: Evaluation, start: Handoff):
     });
     syncAlerts(opp.Id, [], ['rule', 'blocked']);
     await syncBack([opp.Id]);
-    // The rep hears that it went through. A sent invoice or a charged card is the final word.
-    // A draft invoice is told as "processed", and the send is told again when Billing sends it.
-    if (secured) {
-      if (markNotified(opp.Id, 'sent')) {
-        await dmRep(opp, TEMPLATES.confirmation(opp.Name, billingDone(plan.system)));
-      }
-    } else if (markNotified(opp.Id, 'processed')) {
+    // Reps check status on the deal in Salesforce, so there is no message for it. The one exception
+    // is a deal that replaces a plan: the customer loses access if billing is not secured before
+    // the old plan ends.
+    if (h.replaces?.length && markNotified(opp.Id, 'processed')) {
       await dmRep(
         opp,
-        TEMPLATES.processed(
-          opp.Name,
-          `the invoice is drafted and Billing will review and send it. You do not need to do anything.${endsNote(h.replaces)}`,
-        ),
+        TEMPLATES.processed(opp.Name, `everything is set up.${endsNote(h.replaces)}`),
       );
     }
     return 'processed';
@@ -439,6 +436,25 @@ async function runHandoff(ctx: DealContext, result: Evaluation, start: Handoff):
   }
 }
 
+/**
+ * The subscription this deal already has, when our own record of it is gone. First the ID
+ * written back to the deal, then a subscription in the same workspace with this deal's
+ * invoice or charge as its billing reference.
+ */
+async function findEarlierSubscription(
+  writtenBack: string | null | undefined,
+  workspaceId: string,
+  reference: string | null | undefined,
+): Promise<string | null> {
+  if (writtenBack) {
+    const sub = await adminApp.getSubscription(writtenBack).catch(() => null);
+    if (sub) return sub.id;
+  }
+  if (!reference) return null;
+  const subs = await adminApp.listSubscriptions({ workspaceId });
+  return subs.find((s) => s.billingReference === reference)?.id ?? null;
+}
+
 /** When this deal replaces a plan, the customer needs the new billing secured before the old one ends. */
 const endsNote = (replaces: Handoff['replaces']) =>
   replaces?.length
@@ -447,11 +463,6 @@ const endsNote = (replaces: Handoff['replaces']) =>
         .sort()
         .at(-1)}. The invoice has to be sent before then, or they lose access.`
     : '';
-
-const billingDone = (system: 'Kleer' | 'Stripe') =>
-  system === 'Stripe'
-    ? 'the card has been charged. You do not need to do anything.'
-    : 'the invoice has been sent. You do not need to do anything.';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -497,10 +508,6 @@ export async function sendInvoice(oppId: string) {
   if (invoice.status !== 'draft') return;
   await kleer.sendInvoice(h.invoiceNumber);
   await activateDue();
-  const opp = await salesforce.getOpportunity(oppId);
-  if (markNotified(oppId, 'sent')) {
-    await dmRep(opp, TEMPLATES.confirmation(opp.Name, billingDone('Kleer')));
-  }
   syncAlerts(oppId, [], ['unsecured']);
   await syncBack([oppId]);
 }
@@ -566,7 +573,7 @@ export async function requestApproval(oppId: string): Promise<'requested' | 'alr
 }
 
 /**
- * Deal Desk decides. In real Slack this is a button on the request. Here the Exceptions
+ * Deal Desk decides. In real Slack this is a button on the request. Here the Needs action
  * card has the same two buttons. The decision is written to the deal, the deal is checked
  * again (so an approved deal goes straight through), and the rep is told.
  */
@@ -587,9 +594,11 @@ export async function decideApproval(oppId: string, decision: 'Approved' | 'Reje
 }
 
 /** Finance asks the rep something, as a direct message tagged with the deal. */
-export async function askRep(oppId: string, question: string) {
+export async function askRep(oppId: string, question: string, by?: string) {
   const opp = await salesforce.getOpportunity(oppId);
-  await dmRep(opp, TEMPLATES.askRep(opp.Name, question));
+  const body = TEMPLATES.askRep(opp.Name, question);
+  // With a name, the message is shown as coming from that finance person
+  await dmRep(opp, by ? `Finance reply from ${by}: ${body}` : body);
 }
 
 // ── The daily sweep ──────────────────────────────────────────
@@ -617,7 +626,9 @@ export async function sendDigests() {
       `\nIf it is still open ${policy.managerEscalationDays} days after close, ${policy.salesManager} sees it in the weekly update.`,
     );
     const last = state.digests[ownerId];
-    if (last?.text === text && last.on === today) continue;
+    // Once per change: the rep is not messaged again for the same deals. The deadline-day message
+    // is the reminder, and after that the sales manager's weekly update takes over.
+    if (last?.text === text) continue;
     await dmOwner(ownerId, text);
     changeState((s) => {
       s.digests[ownerId] = { on: today, text };

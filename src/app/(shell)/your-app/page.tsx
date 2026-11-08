@@ -40,16 +40,16 @@ const CHANGES: { where: string; what: string; real: string; href: string }[] = [
     href: '/dev',
   },
   {
-    where: 'Admin app > Ready to bill',
-    what: 'Every deal Salesforce sent, what was set up, and the invoice to preview and send.',
-    real: 'A page in the admin app.',
-    href: '/admin-app?tab=ready',
-  },
-  {
-    where: 'Admin app > Exceptions',
-    what: 'Everything that’s stuck and needs a person, with who handles it and by when.',
+    where: 'Admin app > Needs action',
+    what: 'Every deal that is waiting on someone, and who: the sales rep, Billing, Credit Control or Deal Desk. Each deal is in one place only.',
     real: 'A queue in the admin app. The talking stays in Slack.',
     href: '/admin-app?tab=exceptions',
+  },
+  {
+    where: 'Admin app > Ready to bill',
+    what: 'Deals that are set up, with the invoice to preview and send. Once a deal’s open items are done, it moves here.',
+    real: 'A page in the admin app.',
+    href: '/admin-app?tab=ready',
   },
   {
     where: 'Admin app > Rules',
@@ -59,7 +59,7 @@ const CHANGES: { where: string; what: string; real: string; href: string }[] = [
   },
   {
     where: 'Slack',
-    what: 'Reps get one message a day, not one per deal. Messages about a deal are linked to that deal.',
+    what: 'A rep gets a message when a deal first needs them, a reminder on the due date, and an alert if an invoice is overdue or a card fails. Everything else they check on the deal in Salesforce. Sales managers get one update a week for deals a rep still has not fixed. Messages about a deal are linked to that deal.',
     real: 'A Slack app with permission to post and read.',
     href: '/slack',
   },
@@ -212,12 +212,14 @@ export default function ClosedWonHandoffPage() {
               Send remaining deals
             </Button>
           </form>
-          <form action={advanceAction}>
-            <input type="hidden" name="days" value="7" />
-            <Button type="submit" variant="outline" size="sm">
-              Demo: +7 days
-            </Button>
-          </form>
+          {[7, 35].map((days) => (
+            <form key={days} action={advanceAction}>
+              <input type="hidden" name="days" value={days} />
+              <Button type="submit" variant="outline" size="sm">
+                Demo: +{days} days
+              </Button>
+            </form>
+          ))}
           <form action={resetEverything}>
             <Button type="submit" variant="outline" size="sm">
               Reset all systems

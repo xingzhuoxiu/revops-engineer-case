@@ -11,7 +11,7 @@
 import { adminApp, kleer, salesforce, stripe } from '@/lib/connectors';
 import type { KleerInvoice, SalesforceAccount } from '@/lib/systems/types';
 import { dmOwner, dmRep, TEMPLATES } from './slack';
-import { appToday, markNotified, patchHandoff, raiseAlert, readState, syncAlerts } from './store';
+import { appToday, patchHandoff, raiseAlert, readState, syncAlerts } from './store';
 
 /** Fields we write onto the Opportunity so the rep, and Salesforce reports, can see billing. */
 export const SYNC_FIELDS = [
@@ -98,14 +98,6 @@ export async function syncBack(only?: string[]) {
     if (Object.keys(patch).length > 0) {
       await salesforce.updateOpportunity(h.oppId, patch);
       patchHandoff(h.oppId, { written: next });
-    }
-
-    // The rep hears when the invoice is paid
-    if (invoice && next.Invoice_Status__c === 'Paid' && markNotified(h.oppId, 'paid')) {
-      await dmRep(
-        { Id: h.oppId, Name: h.dealName, OwnerId: h.ownerId },
-        TEMPLATES.paid(h.dealName, invoice.invoiceNumber),
-      );
     }
 
     // 2. An unpaid invoice past its due date goes to Credit Control, and the rep is told once

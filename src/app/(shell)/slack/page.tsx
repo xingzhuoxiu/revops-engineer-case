@@ -41,10 +41,16 @@ export default async function SlackPage(props: PageProps<'/slack'>) {
   }
 
   const line = (m: (typeof ordered)[number], small: boolean) => {
-    const author = person(m.user);
+    // The app sends a rep's or a finance person's message on their behalf, with their name in
+    // front. Slack shows it as theirs ("via Admin app"), as it would with a user token.
+    const onBehalf = /^(?:Rep message|Finance reply) from ([^:]+): /.exec(m.text);
+    const sender = person(m.user) ? undefined : users.find((u) => u.real_name === onBehalf?.[1]);
+    const author = person(m.user) ?? sender;
     const name = author?.real_name ?? 'Your app';
     // The deal reference our app adds to every message is plumbing, so it is shown small
-    const [body, ref] = m.text.split(/\n(?=Deal 006)/);
+    const [body, ref] = (sender && onBehalf ? m.text.replace(onBehalf[0], '') : m.text).split(
+      /\n(?=Deal 006)/,
+    );
     return (
       <div key={m.ts} className="flex gap-3 px-5 py-1.5 hover:bg-[#f8f8f8]">
         <div
@@ -62,6 +68,7 @@ export default async function SlackPage(props: PageProps<'/slack'>) {
             {author ? null : (
               <span className="rounded bg-[#e8e8e8] px-1 text-[#616061] text-[10px]">APP</span>
             )}
+            {sender ? <span className="text-[#868686] text-[11px]">via Admin app</span> : null}
             <span className="text-[#616061] text-xs">{formatDateTime(m.postedAt)}</span>
           </div>
           <p className="whitespace-pre-wrap text-[15px] leading-snug">

@@ -16,9 +16,11 @@ export async function Messages({ thread, limit = 5 }: { thread?: DealThread; lim
   return (
     <ul className="flex flex-col gap-2">
       {thread.messages.slice(0, limit).map((m) => (
-        <li key={m.ts} className="rounded-lg border p-3 text-sm">
+        <li key={m.ts} className="border-b pb-2 text-sm">
           <div className="flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
-            <span className="font-medium text-foreground">{m.author}</span>
+            <span className="font-medium text-foreground">
+              {m.role === 'app' ? 'MentOS, automatic' : m.author}
+            </span>
             <span>{m.channel}</span>
             <span>{formatDateTime(m.at)}</span>
             {m.match === 'mentioned' ? (

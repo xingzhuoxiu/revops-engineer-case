@@ -16,7 +16,7 @@ import { appToday } from './store';
 export const FINANCE_CHANNEL = 'finance-billing';
 export const DEAL_DESK_CHANNEL = 'deal-desk';
 const SLACK_CHANNELS = ['finance-billing', 'deal-desk', 'revops-help'];
-const FINANCE_TITLES = ['Billing Specialist', 'Credit Controller'];
+export const FINANCE_TITLES = ['Billing Specialist', 'Credit Controller'];
 
 /** The line every message about a deal ends with. Parsed back out by `dealIdOf`. */
 export const dealRef = (opp: Pick<SalesforceOpportunity, 'Id' | 'Name'>) => `Deal ${opp.Id}`;
@@ -82,7 +82,6 @@ export const TEMPLATES = {
       .join('\n')}${managerNote}`,
   urgent: (name: string, what: string) =>
     `${name} is due today. Finance cannot bill it until this is fixed: ${what}`,
-  confirmation: (name: string, what: string) => `${name}: ${what}`,
   locked: (name: string) =>
     `${name} has already been billed, so the change you just made was not applied. Create an amendment deal and finance will pick it up.`,
   askRep: (name: string, question: string) => `Finance has a question about ${name}: ${question}`,
@@ -102,8 +101,6 @@ export const TEMPLATES = {
       .join('\n')}`;
   },
   processed: (name: string, what: string) => `${name} is processed: ${what}`,
-  withFinance: (name: string, what: string, due: string | null) =>
-    `${name} is with finance. They are waiting on: ${what}.${due ? ` Due ${due}.` : ''} Nothing for you to do unless they ask.`,
   approvalRequested: (
     oppId: string,
     name: string,
@@ -116,7 +113,6 @@ export const TEMPLATES = {
     `Deal Desk approved the discount on ${name}. Finance can book it now.`,
   rejected: (name: string) =>
     `Deal Desk did not approve the discount on ${name}. Change the discount on the deal and request approval again.`,
-  paid: (name: string, invoice: string) => `${name}: invoice ${invoice} has been paid.`,
   overdue: (name: string, invoice: string, due: string) =>
     `Invoice ${invoice} for ${name} was due ${due} and is not paid. Credit Control is on it. A word from you to the customer would help.`,
   paymentFailed: (customer: string, error?: string) =>

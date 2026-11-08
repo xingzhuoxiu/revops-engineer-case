@@ -1,6 +1,8 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { demoFix } from '@/lib/handoff/demo';
 import {
   advanceDays,
@@ -14,6 +16,7 @@ import {
   saveBillingDetails,
   sendInvoice,
 } from '@/lib/handoff/run';
+import { currentFinanceUser, financeUsers, SESSION_COOKIE } from '@/lib/handoff/session';
 import {
   DEFAULT_POLICY,
   getPolicy,
@@ -76,8 +79,37 @@ export async function sendInvoiceAction(f: FormData) {
   refresh();
 }
 
+/** Signs in with a Slack account. Mock: no password, you pick a finance person from Slack. */
+export async function signInAction(f: FormData) {
+  const user = (await financeUsers()).find((u) => u.id === text(f, 'user'));
+  if (user) (await cookies()).set(SESSION_COOKIE, user.id, { path: '/', httpOnly: true });
+  refresh();
+}
+
+export async function signOutAction() {
+  (await cookies()).delete(SESSION_COOKIE);
+  refresh();
+}
+
+/** Sends the ticked invoices one by one. Each still sends only once, so nothing goes out twice. */
+export async function sendInvoicesAction(f: FormData) {
+  let sent = 0;
+  for (const id of f.getAll('oppId').map(String)) {
+    try {
+      await sendInvoice(id);
+      sent += 1;
+    } catch {
+      // One failing invoice must not stop the rest. It stays a draft and can be sent on its own.
+    }
+  }
+  refresh();
+  redirect(`/admin-app?tab=ready&sent=${sent}`);
+}
+
 export async function askRepAction(f: FormData) {
-  if (text(f, 'text')) await askRep(text(f, 'oppId'), text(f, 'text'));
+  // Needs a signed-in finance person, so the message goes out under their name
+  const me = await currentFinanceUser();
+  if (me && text(f, 'text')) await askRep(text(f, 'oppId'), text(f, 'text'), me.real_name);
   refresh();
 }
 
@@ -96,8 +128,9 @@ export async function replyAction(f: FormData) {
   // Reply where the rep asked: the same channel and thread. Without one, #finance-billing.
   const channel = text(f, 'channel');
   const target = channel ? { channel, threadTs: text(f, 'threadTs') || undefined } : undefined;
-  if (text(f, 'text')) {
-    await financeReply(text(f, 'oppId'), text(f, 'text'), undefined, target);
+  const me = await currentFinanceUser();
+  if (me && text(f, 'text')) {
+    await financeReply(text(f, 'oppId'), text(f, 'text'), me.real_name, target);
   }
   refresh();
 }

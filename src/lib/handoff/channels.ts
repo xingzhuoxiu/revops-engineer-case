@@ -1,11 +1,8 @@
 /**
  * Requests that reps type into the Slack channels. Nothing is turned into an
- * item in the admin app. Two things happen in Slack, where the rep already is:
- *
- *  1. The app answers in the thread with the deal's live status, once. Most
- *     questions are "where is my deal?", and the system already knows.
- *  2. If the deal needs a person (finance or Deal Desk) and nobody has replied
- *     after one business day, the app reminds the channel's owner in the same thread.
+ * item in the admin app, and the app does not answer on its own. Finance answers, with
+ * a draft ready on the deal (see drafts.ts). If nobody has replied after one business
+ * day, the app reminds the channel's owner in the same thread, once.
  *
  * In a real Slack this would run on Slack's Events API. The mock has no event
  * feed, so it reads channel history in the daily check.
@@ -88,15 +85,10 @@ export async function answerChannels() {
       const h = oppId ? state.handoffs[oppId] : undefined;
       if (!oppId || !h) continue;
       const opp = { Id: oppId, Name: h.dealName };
-      const reply = statusReply(readState().handoffs[oppId], h.dealName);
 
-      // 1. Answer in the thread, once. A deal waiting on a person is answered again when its status changes.
-      if (markChannelDone(`reply:${m.ts}:${reply.text}`)) {
-        await postThreadReply(channel.id, m.ts, opp, reply.text);
-      }
-
-      // 2. After one business day with no person replying, remind the channel's owner, once
-      if (reply.needsPerson && addDays(day, 1) <= today) {
+      // Nothing is posted for the rep's question. Finance gets a draft on the deal, to read and send.
+      // If nobody has replied after one business day, remind the channel's owner, once.
+      if (addDays(day, 1) <= today) {
         const replied = messages.some(
           (x) => x.threadTs === m.ts && x.user !== 'U04HANDOFF' && x.postedAt >= m.postedAt,
         );

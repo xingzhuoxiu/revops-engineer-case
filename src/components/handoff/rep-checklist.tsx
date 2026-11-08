@@ -276,10 +276,10 @@ export async function RepChecklist({ oppId }: { oppId: string }) {
           {closed && repFails.length > 0 && result.due ? (
             <p className="text-sm">
               {result.due < appToday() ? 'This was due ' : 'Please fix this by '}
-              <strong>{formatDate(result.due)}</strong>. You get one Slack message a day while
-              something is open. The deal counts in the forecast, but finance cannot book it until
-              this is fixed. If it is still open {policy.managerEscalationDays} days after close,{' '}
-              {policy.salesManager} sees it in the weekly update.
+              <strong>{formatDate(result.due)}</strong>. You get one Slack message when it is
+              raised, and a reminder on the due date. The deal counts in the forecast, but finance
+              cannot book it until this is fixed. If it is still open {policy.managerEscalationDays}{' '}
+              days after close, {policy.salesManager} sees it in the weekly update.
             </p>
           ) : null}
 

@@ -5,9 +5,10 @@
  */
 import { describe, expect, it } from 'vitest';
 import { adminApp, kleer, salesforce, stripe } from '@/lib/connectors';
-import { readDb } from '@/lib/db';
+import { readDb, updateDb } from '@/lib/db';
 import { loadContext } from '@/lib/handoff/context';
 import { demoFix } from '@/lib/handoff/demo';
+import { draftReply } from '@/lib/handoff/drafts';
 import {
   advanceDays,
   decideApproval,
@@ -78,6 +79,34 @@ describe('this week’s deals', () => {
     expect(readDb().adminApp.subscriptions.length).toBe(first.subs);
     expect(readDb().kleer.invoices.length).toBe(first.invoices);
     expect(readDb().stripe.subscriptions.length).toBe(first.stripe);
+  });
+
+  it('creates nothing twice even if the app loses its own record and everything is replayed', async () => {
+    await sendAll();
+    const counts = () => ({
+      workspaces: readDb().adminApp.workspaces.length,
+      subs: readDb().adminApp.subscriptions.length,
+      invoices: readDb().kleer.invoices.length,
+      kleerCustomers: readDb().kleer.customers.length,
+      stripeCustomers: readDb().stripe.customers.length,
+      stripeSubs: readDb().stripe.subscriptions.length,
+    });
+    const before = counts();
+    const seats = readDb().adminApp.subscriptions.map((s) => [s.id, s.seats]);
+
+    // Lose everything the app knows about itself. Only the other systems remain.
+    updateDb((db) => {
+      db.app.closedWon = undefined;
+    });
+    expect(Object.keys(readState().handoffs)).toHaveLength(0);
+
+    await sendAll();
+    expect(counts()).toEqual(before);
+    // An add-on does not add its seats a second time
+    expect(readDb().adminApp.subscriptions.map((s) => [s.id, s.seats])).toEqual(seats);
+    // The deals are found again and still processed
+    expect(await statusOf('Fjordline')).toBe('processed');
+    expect(await statusOf('Halden')).toBe('processed');
   });
 
   it('writes the result back and puts new invoices in draft', async () => {
@@ -482,15 +511,27 @@ describe('after billing: the other systems report back', () => {
   });
 });
 
-describe('the rep hears about every status change, once', () => {
+describe('the rep is only messaged when it matters', () => {
   const said = (text: string) =>
     readDb().slack.messages.filter((m) => m.text.includes(text)).length;
 
-  it('tells the rep when a deal is processed and when it goes to finance', async () => {
+  it('does not message the rep about routine status changes', async () => {
     await sendAll();
-    expect(said('Fjordline') > 0).toBe(true);
-    expect(said('is processed: the invoice is drafted') > 0).toBe(true);
-    expect(said('is with finance. They are waiting on: discount approval')).toBe(1);
+    // Reps see the status on the deal in Salesforce
+    expect(said('is processed: the invoice is drafted')).toBe(0);
+    expect(said('is with finance. They are waiting on')).toBe(0);
+    expect(said('the invoice has been sent')).toBe(0);
+  });
+
+  it('does not repeat the digest the next day for the same open deals', async () => {
+    await sendAll();
+    await sweep();
+    const digests = () =>
+      readDb().slack.messages.filter((m) => m.text.startsWith('Your Closed Won deals')).length;
+    const before = digests();
+    expect(before > 0).toBe(true);
+    await advanceDays(1);
+    expect(digests()).toBe(before);
   });
 
   it('tells the rep when the old plan ends, if the deal replaces one (Nordlys)', async () => {
@@ -513,17 +554,34 @@ describe('requests typed in the Slack channels', () => {
   const threadReplies = (text: string) =>
     readDb().slack.messages.filter((m) => m.threadTs && m.text.includes(text));
 
-  it('answers a rep’s question in the thread with the deal’s live status, once', async () => {
+  it('does not answer a rep’s question on its own, and leaves it open for finance', async () => {
     await sendAll();
     await sweep();
-    expect(threadReplies('Corvid Analytics - New Pro: waiting on you')).toHaveLength(1);
     await sweep();
-    await sweep();
-    expect(threadReplies('Corvid Analytics - New Pro: waiting on you')).toHaveLength(1);
-    // The answer counts, so the question is no longer "no reply yet"
+    expect(threadReplies('Corvid Analytics - New Pro: waiting on you')).toHaveLength(0);
     const corvid = await idOf('Corvid');
     const threads = await messagesByDeal([{ Id: corvid, accountName: 'Corvid Analytics' }]);
-    expect(threads[corvid]?.unanswered).toBe(false);
+    expect(threads[corvid]?.unanswered).toBe(true);
+  });
+
+  it('drafts an answer for finance that says what to fix and why it matters', async () => {
+    await sendAll();
+    const corvid = await idOf('Corvid');
+    const h = readState().handoffs[corvid];
+    if (!h) throw new Error('no hand-off');
+    const draft = draftReply(
+      h,
+      openAlerts().filter((a) => a.oppId === corvid),
+      true,
+    );
+    expect(draft).toContain('Hi Jordan');
+    expect(draft).toContain('thanks for asking');
+    expect(draft).toContain('seats');
+    expect(draft).toContain('set licenses to 8');
+    // Nothing was sent
+    expect(
+      readDb().slack.messages.filter((m) => m.text.includes('set licenses to 8')),
+    ).toHaveLength(0);
   });
 
   it('reminds the channel’s owner once when a deal waits on a person, and creates no item', async () => {
@@ -644,8 +702,8 @@ describe('sending an invoice', () => {
     const afterFirst = readDb().slack.messages.length;
     await sendInvoice(fjordline);
     await sendInvoice(fjordline);
-    expect(afterFirst).toBe(before + 1); // one message to the rep, for the first send
-    expect(readDb().slack.messages.length).toBe(afterFirst);
+    expect(afterFirst).toBe(before); // routine status is not messaged: reps see it on the deal
+    expect(readDb().slack.messages.length).toBe(afterFirst); // and pressing again sends nothing
     const sent = await kleer.findInvoices({ foreignId: fjordline, status: 'sent' });
     expect(sent).toHaveLength(1);
   });

@@ -2,9 +2,10 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Status } from '@/components/data/status';
 import { BuiltNote } from '@/components/handoff/built';
-import { Exceptions, exceptionCount } from '@/components/handoff/exceptions';
+import { Exceptions, needsActionCount } from '@/components/handoff/exceptions';
 import { ReadyToBill } from '@/components/handoff/ready-to-bill';
 import { Rules } from '@/components/handoff/rules';
+import { SignIn } from '@/components/handoff/sign-in';
 import { Page, PageHeader } from '@/components/shell/page';
 import {
   Table,
@@ -23,26 +24,26 @@ export const metadata: Metadata = { title: 'Admin app' };
 /** A short note on each new tab, for whoever reviews this mock. */
 const NOTES: Record<string, { title: string; text: string }> = {
   ready: {
-    title: 'The finance side of the hand-off.',
-    text: 'Every deal Salesforce sent over, and what the system already set up for it: the workspace, the subscription, and the invoice draft or card charge. Finance only has to check the invoice and send it. In the real admin app this would just be another page.',
+    title: 'Ready to bill.',
+    text: 'Deals that are set up: the workspace, the subscription, and the invoice or card charge. Send the invoice here. Deals still waiting on someone are under Needs action. In the real admin app this would just be another page.',
   },
   exceptions: {
-    title: 'Only what needs a person.',
-    text: 'Anything the system can’t decide by itself ends up here, with who handles it and by when. It goes to a team queue, not to one person, so nothing sits here while someone is on holiday. The conversation itself stays in Slack.',
+    title: 'Needs action.',
+    text: 'Every Closed Won deal that is waiting on someone, and who: the sales rep, Billing, Credit Control or Deal Desk. One card per deal, in the column of whoever has to act. When the open items are done, the deal moves to Ready to bill. The conversation stays in Slack.',
   },
   rules: {
-    title: 'Finance’s rules in one place.',
-    text: 'Card limit, discount limit, deadlines, and who covers for who. Finance can change them here and see who changed what, so a small rule change doesn’t need a developer.',
+    title: 'Rules.',
+    text: 'Finance’s numbers as settings: card limit, discount limit, deadlines, and who covers for who. Every change is logged, so a small rule change doesn’t need a developer.',
   },
 };
 
 export default async function AdminAppPage(props: PageProps<'/admin-app'>) {
-  const { tab, deal, preview, filter } = await props.searchParams;
+  const { tab, deal, preview, filter, pick, sent } = await props.searchParams;
   const active =
     tab === 'workspaces' || tab === 'ready' || tab === 'exceptions' || tab === 'rules'
       ? tab
       : 'subscriptions';
-  const ready = Object.values(readState().handoffs).filter((h) => h.status !== 'ignored').length;
+  const ready = Object.values(readState().handoffs).filter((h) => h.status === 'processed').length;
   const [subscriptions, workspaces, accounts] = await Promise.all([
     adminApp.listSubscriptions(),
     adminApp.listWorkspaces(),
@@ -61,58 +62,67 @@ export default async function AdminAppPage(props: PageProps<'/admin-app'>) {
     );
   };
 
-  const nav = [
+  const groups = [
     {
-      id: 'subscriptions',
-      label: 'Subscriptions',
-      href: '/admin-app',
-      count: subscriptions.length,
+      title: 'Records',
+      items: [
+        {
+          id: 'subscriptions',
+          label: 'Subscriptions',
+          href: '/admin-app',
+          count: subscriptions.length,
+        },
+        {
+          id: 'workspaces',
+          label: 'Workspaces',
+          href: '/admin-app?tab=workspaces',
+          count: workspaces.length,
+        },
+      ],
     },
     {
-      id: 'workspaces',
-      label: 'Workspaces',
-      href: '/admin-app?tab=workspaces',
-      count: workspaces.length,
+      title: 'Closed Won hand-off',
+      items: [
+        {
+          id: 'exceptions',
+          label: 'Needs action',
+          href: '/admin-app?tab=exceptions',
+          count: needsActionCount(),
+        },
+        { id: 'ready', label: 'Ready to bill', href: '/admin-app?tab=ready', count: ready },
+        { id: 'rules', label: 'Rules', href: '/admin-app?tab=rules', count: null },
+      ],
     },
-    {
-      id: 'ready',
-      label: 'Ready to bill',
-      href: '/admin-app?tab=ready',
-      count: ready,
-      isNew: true,
-    },
-    {
-      id: 'exceptions',
-      label: 'Exceptions',
-      href: '/admin-app?tab=exceptions',
-      count: exceptionCount(),
-      isNew: true,
-    },
-    { id: 'rules', label: 'Rules', href: '/admin-app?tab=rules', count: null, isNew: true },
   ];
 
   return (
     <Page>
       <PageHeader title="Admin app" />
       <div className="grid items-start gap-8 md:grid-cols-[11rem_minmax(0,1fr)]">
-        <nav className="flex flex-col text-sm">
-          {nav.map((n) => (
-            <Link
-              key={n.id}
-              href={n.href}
-              className={`flex items-center justify-between rounded-sm px-2 py-1.5 hover:bg-muted ${
-                active === n.id ? 'bg-muted font-medium' : 'text-muted-foreground'
-              }`}
-            >
-              <span className="flex items-center gap-1.5">
-                {n.label}
-                {n.isNew ? <span className="size-1.5 rounded-full bg-violet-600" /> : null}
-              </span>
-              {n.count === null ? null : (
-                <span className="text-muted-foreground text-xs tabular-nums">{n.count}</span>
-              )}
-            </Link>
+        <nav className="flex flex-col gap-5 text-sm">
+          {groups.map((g, i) => (
+            <div key={g.title} className="flex flex-col">
+              <div className="flex items-center gap-1.5 px-2 pb-1 text-muted-foreground text-xs">
+                {g.title}
+                {i === 1 ? <span className="size-1.5 rounded-full bg-violet-600" /> : null}
+              </div>
+              {g.items.map((n) => (
+                <Link
+                  key={n.id}
+                  href={n.href}
+                  className={`flex items-center justify-between rounded-sm px-2 py-1.5 hover:bg-muted ${
+                    active === n.id ? 'bg-muted font-medium' : ''
+                  }`}
+                >
+                  {n.label}
+                  {n.count === null ? null : (
+                    <span className="text-muted-foreground text-xs tabular-nums">{n.count}</span>
+                  )}
+                </Link>
+              ))}
+            </div>
           ))}
+          <SignIn />
         </nav>
         <div className="flex min-w-0 flex-col gap-4">
           {NOTES[active] ? (
@@ -123,9 +133,14 @@ export default async function AdminAppPage(props: PageProps<'/admin-app'>) {
               deal={typeof deal === 'string' ? deal : undefined}
               preview={preview === '1'}
               filter={typeof filter === 'string' ? filter : undefined}
+              pick={pick === undefined ? undefined : [pick].flat()}
+              sent={typeof sent === 'string' ? Number(sent) || undefined : undefined}
             />
           ) : active === 'exceptions' ? (
-            <Exceptions />
+            <Exceptions
+              deal={typeof deal === 'string' ? deal : undefined}
+              preview={preview === '1'}
+            />
           ) : active === 'rules' ? (
             <Rules />
           ) : (
