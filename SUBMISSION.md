@@ -55,7 +55,7 @@ Billing a customer twice is the worst thing this could do, so the checks sit in 
 - **Kleer is checked first.** Kleer accepts duplicates, so before creating an invoice I look for one with this deal's ID. `run.ts`. Covered by the replay test above and the wipe test below.
 - **Stripe idempotency keys.** The customer and subscription calls carry `customer:<deal id>` and `subscription:<deal id>`. `run.ts`. The test for how keys behave is on the Stripe mock (`mock-systems.test.ts`), not on my own keys.
 - **If the app loses its own record.** It finds the subscription again from the ID written on the deal, or from the invoice or charge reference. `run.ts`. Test: "creates nothing twice even if the app loses its own record and everything is replayed".
-- **Locked after billing.** A change after billing becomes a notice for finance, not an edit. `run.ts`. Test: "locks a deal after billing and tells finance when someone changes it".
+- **Locked once it's set up.** A change after that becomes a notice for finance, not an edit. This includes an unsent Kleer draft, which is stricter than it needs to be (see the questions below). `run.ts`. Test: "locks a deal after billing and tells finance when someone changes it".
 - **Send once.** If the invoice isn't a draft any more, `sendInvoice` does nothing. `run.ts`. Test: "only sends once, however many times it is pressed".
 - **My own write-backs are ignored.** An event that only changed fields I wrote is skipped. `run.ts`. Test: "ignores the echo of our own write-backs".
 
@@ -91,6 +91,7 @@ What I'd ask first, and what each answer could change:
 - **Can we install a Slack app that reads #finance-billing, #deal-desk and #revops-help?** Without it, the app only reads Slack once a day, so a rep's question can wait for finance's draft reply.
 - **Who calls the customer on an overdue invoice, Credit Control or the rep?**
 - **What should a rep do when a billed deal changes?** My wording is a placeholder.
+- **Should a change replace an unsent Kleer draft?** Today the deal locks as soon as the draft exists, so a late PO becomes a notice for finance. Replacing the draft is possible (delete and recreate). It depends on how finance edits drafts in Kleer today, which the mock doesn't show.
 
 ## How to try it
 
@@ -107,6 +108,7 @@ What I'd ask first, and what each answer could change:
 
 ## What I'd do next
 
+- Let a change replace an unsent draft, starting with a late PO. Keep the lock for sent invoices and card charges.
 - Move the rep checklist into a real Salesforce record page, and the write-back into a Flow.
 - Use Slack's Events API and buttons, so answers and approvals are instant.
 - Before creating a Stripe subscription, look in Stripe for one with this deal's ID, like I already do for Kleer invoices. Then a replay can't double-charge even after Stripe forgets its keys.
@@ -115,6 +117,24 @@ What I'd ask first, and what each answer could change:
 - Let a rep say "I'll provide it by Friday" on the checklist. That moves the due date, so they don't get a reminder for something they've already told finance about.
 - Let finance add PO exception rules as real checks.
 - A weekly report for RevOps: how many deals went straight through, and which rule stops most. The most repeated problem gets fixed at the source.
+
+## Where I'd use an LLM
+
+There is no AI inside what I built. The rules decide everything, and the draft replies to reps are templates (`drafts.ts`). I used AI to build it, not in it. I did that on purpose: anything that moves money should be something I can test and explain. But there are places where an LLM would help, as long as it only suggests.
+
+- **Draft replies.** Today the draft is a template per rule. An LLM could read the rep's actual question and the deal facts, and write a reply that answers it. Finance still reads it and presses send, like now.
+- **Reading free text.** A rep types "the PO is coming Friday" in Slack, or pastes a customer's email. An LLM could pull out the PO number or the date and suggest it. A person confirms before it is written to the deal.
+- **Matching a Slack message to a deal.** Today it's the deal ID, or a guess from the customer's name. An LLM could guess better, and it would still be shown as "may be about this deal".
+
+How I'd keep it in check:
+
+- **Rules decide, the LLM only words it.** It never creates a workspace, invoice or charge, and it never edits a deal. Those stay in `run.ts`, behind the rules.
+- **A person approves anything that leaves the building or changes a record.** Same as the draft box today.
+- **It only gets the facts I give it.** The deal's real values come from Salesforce, and the reply is checked against them. A number in the draft that isn't on the deal gets flagged.
+- **If it fails, the template is the fallback.** The app works exactly as it does now.
+- **I'd test it on the messy deals.** Corvid's seat question would be the first test: does the draft answer it, and does it get the numbers right?
+
+What I'd ask first: who is allowed to change a customer record based on what a model read.
 
 ## Working with your AI tool
 

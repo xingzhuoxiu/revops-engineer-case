@@ -17,6 +17,7 @@ import {
   type Evaluation,
   type Finding,
   firstYearAmount,
+  hostOf,
   yearsOf,
 } from '@/lib/policy/rules';
 import type { SalesforceEvent, Workspace } from '@/lib/systems/types';
@@ -208,6 +209,9 @@ const snapshotOf = (ctx: DealContext) =>
 
 // ── Setting everything up ────────────────────────────────────
 
+/** Something we know is wrong with the data, found while setting up. Handled like a system error: finance is told. */
+class SetupError extends Error {}
+
 async function runHandoff(ctx: DealContext, result: Evaluation, start: Handoff): Promise<Outcome> {
   const { opp, account } = ctx;
   const plan = result.plan;
@@ -235,10 +239,18 @@ async function runHandoff(ctx: DealContext, result: Evaluation, start: Handoff):
     } else if (h.workspaceId) {
       workspace = await adminApp.getWorkspace(h.workspaceId);
     } else {
+      // A new workspace needs a domain. A missing or malformed website stops the deal here, before
+      // anything is created, and tells finance what to fix.
+      const domain = hostOf(account.Website);
+      if (!domain) {
+        throw new SetupError(
+          `${account.Name} has no valid website on the account, so a workspace can't be created`,
+        );
+      }
       workspace = await adminApp.createWorkspace({
         name: account.Name,
         salesforceAccountId: account.Id,
-        domain: new URL(account.Website).hostname.replace(/^www\./, ''),
+        domain,
         region: String(account.Region__c).includes('North America') ? 'US' : 'EU',
       });
     }
@@ -421,12 +433,14 @@ async function runHandoff(ctx: DealContext, result: Evaluation, start: Handoff):
     }
     return 'processed';
   } catch (error) {
-    if (!(error instanceof ConnectorError)) throw error;
+    if (!(error instanceof ConnectorError || error instanceof SetupError)) throw error;
+    const said =
+      error instanceof ConnectorError ? `${error.system} said: ${error.message}` : error.message;
     raiseAlert({
       oppId: opp.Id,
       kind: 'blocked',
       title: 'Hand-off stopped',
-      message: `${error.system} said: ${error.message}. Nothing was created twice. Fix it and check the deal again.`,
+      message: `${said}. Nothing was created twice. Fix it and check the deal again.`,
       queue: 'billing',
       ownerLabel: null,
       due: result.due,

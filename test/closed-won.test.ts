@@ -109,6 +109,20 @@ describe('this week’s deals', () => {
     expect(await statusOf('Halden')).toBe('processed');
   });
 
+  it('tells finance instead of crashing when an account has no valid website', async () => {
+    const deals = await salesforce.listOpportunities({ closedAfter: '2026-11-02' });
+    for (const accountId of new Set(deals.map((d) => d.AccountId))) {
+      await salesforce.updateAccount(accountId, { Website: 'not a url' });
+    }
+    await sendAll(); // used to throw on a new workspace
+    const stopped = openAlerts().filter(
+      (a) => a.kind === 'blocked' && a.message.includes('no valid website'),
+    );
+    expect(stopped.length).toBeGreaterThan(0);
+    // Nothing was created without a domain
+    expect(readDb().adminApp.workspaces.every((w) => !!w.domain)).toBe(true);
+  });
+
   it('writes the result back and puts new invoices in draft', async () => {
     await sendAll();
     const fjordline = await salesforce.getOpportunity(await idOf('Fjordline'));
